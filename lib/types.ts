@@ -89,6 +89,7 @@ export interface Product {
   thc: number | null;
   cbd: number | null;
   in_stock: boolean;
+  sku?: string | null;
   created_at: string;
 }
 

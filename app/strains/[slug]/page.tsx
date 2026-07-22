@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { Strain, Dispensary, Product } from '@/lib/types';
+import { terpeneSimilarStrains } from '@/lib/recommend';
 import TypeBadge from '@/components/TypeBadge';
 import StrainThumb from '@/components/StrainThumb';
 import StrainCard from '@/components/StrainCard';
@@ -29,17 +30,24 @@ async function getStrain(slug: string) {
     .neq('id', strain.id)
     .limit(4);
 
+  // Full catalog (minus itself) so terpene-similarity can surface a match
+  // from anywhere -- including strains of a different type the shopper (or
+  // a dispensary sourcing new inventory) might never have searched for.
+  const { data: allStrains } = await supabase.from('strains').select('*').neq('id', strain.id);
+  const terpeneMatches = terpeneSimilarStrains(strain as Strain, (allStrains || []) as Strain[], 4);
+
   return {
     strain: strain as Strain,
     listings: (products || []) as (Product & { dispensaries: Dispensary })[],
     similar: (similar || []) as Strain[],
+    terpeneMatches,
   };
 }
 
 export default async function StrainDetailPage({ params }: { params: { slug: string } }) {
   const result = await getStrain(params.slug);
   if (!result) notFound();
-  const { strain, listings, similar } = result;
+  const { strain, listings, similar, terpeneMatches } = result;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
@@ -143,9 +151,31 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
         )}
       </section>
 
+      {terpeneMatches.length > 0 && (
+        <section className="mt-12">
+          <h2 className="mb-1 text-xl font-semibold">Similar terpene profile</h2>
+          <p className="mb-4 text-sm text-canopy-muted">
+            Matched by chemistry, not just category -- these share {strain.name}'s dominant terpenes
+            even when the strain type is different.
+          </p>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {terpeneMatches.map((m) => (
+              <div key={m.strain.id}>
+                <StrainCard strain={m.strain} />
+                {m.sharedTerpenes.length > 0 && (
+                  <p className="mt-1.5 text-center text-[11px] text-canopy-muted">
+                    Shares {m.sharedTerpenes.slice(0, 2).join(', ')} · {(m.similarity * 100).toFixed(0)}% match
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {similar.length > 0 && (
         <section className="mt-12">
-          <h2 className="mb-4 text-xl font-semibold">Similar strains</h2>
+          <h2 className="mb-4 text-xl font-semibold">More {strain.type} strains</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {similar.map((s) => (
               <StrainCard key={s.id} strain={s} />

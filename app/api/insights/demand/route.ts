@@ -16,6 +16,96 @@ export const runtime = 'nodejs';
 
 const MIN_LOCAL_SAMPLE = 5;
 
+// Price bands for flower listings. These are deliberately simple, roughly
+// eighth-ounce-scale bands ($ per listed unit as entered by the dispensary)
+// -- good enough to flag a directional mismatch between what's stocked and
+// what's wanted, not meant as a precise market-price index.
+type PriceTier = 'budget' | 'mid' | 'premium';
+function tierOf(price: number): PriceTier {
+  if (price < 30) return 'budget';
+  if (price <= 55) return 'mid';
+  return 'premium';
+}
+function emptyTierCounts(): Record<PriceTier, number> {
+  return { budget: 0, mid: 0, premium: 0 };
+}
+function toPercentages(counts: Record<PriceTier, number>) {
+  const total = counts.budget + counts.mid + counts.premium;
+  if (total === 0) return { budget: 0, mid: 0, premium: 0, total: 0 };
+  return {
+    budget: Math.round((counts.budget / total) * 100),
+    mid: Math.round((counts.mid / total) * 100),
+    premium: Math.round((counts.premium / total) * 100),
+    total,
+  };
+}
+
+interface PriceTierMix {
+  own: ReturnType<typeof toPercentages>;
+  demand: ReturnType<typeof toPercentages>;
+  insight: string | null;
+}
+
+async function buildPriceTierMix(
+  admin: ReturnType<typeof createAdminClient>,
+  dispensaryId: string,
+  ownFlowerProducts: { strain_id: string | null; price: number | null }[],
+  favCounts: Record<string, number>
+): Promise<PriceTierMix | null> {
+  if (!admin) return null;
+
+  // Own menu's price-tier distribution.
+  const ownCounts = emptyTierCounts();
+  for (const p of ownFlowerProducts) {
+    if (p.price === null || p.price === undefined) continue;
+    ownCounts[tierOf(Number(p.price))]++;
+  }
+
+  // Platform-wide average listed price per strain (approved dispensaries
+  // only), used to price what members are favoriting.
+  const { data: platformFlower } = await admin
+    .from('products')
+    .select('strain_id, price, dispensaries!inner(status)')
+    .eq('category', 'flower')
+    .eq('dispensaries.status', 'approved')
+    .not('price', 'is', null)
+    .not('strain_id', 'is', null);
+
+  const priceSum: Record<string, { sum: number; count: number }> = {};
+  for (const row of platformFlower || []) {
+    const sid = (row as any).strain_id;
+    const price = Number((row as any).price);
+    if (!sid || !Number.isFinite(price)) continue;
+    if (!priceSum[sid]) priceSum[sid] = { sum: 0, count: 0 };
+    priceSum[sid].sum += price;
+    priceSum[sid].count += 1;
+  }
+
+  const demandCounts = emptyTierCounts();
+  for (const [sid, favCount] of Object.entries(favCounts)) {
+    const avg = priceSum[sid];
+    if (!avg || avg.count === 0) continue; // no platform pricing data for this strain yet
+    const avgPrice = avg.sum / avg.count;
+    demandCounts[tierOf(avgPrice)] += favCount;
+  }
+
+  const own = toPercentages(ownCounts);
+  const demand = toPercentages(demandCounts);
+
+  let insight: string | null = null;
+  if (own.total >= 3 && demand.total >= MIN_LOCAL_SAMPLE) {
+    const premiumGap = own.premium - demand.premium;
+    const budgetGap = demand.budget - own.budget;
+    if (premiumGap >= 20 && budgetGap >= 15) {
+      insight = `Your menu skews premium (${own.premium}% of flower vs. ${demand.premium}% of what members favorite), while budget demand (${demand.budget}%) is underrepresented on your shelves (${own.budget}%). That gap in high-end stock can sit and age while cheaper picks sell through -- worth testing a few more budget-tier SKUs.`;
+    } else if (budgetGap <= -20 && premiumGap <= -15) {
+      insight = `Your menu skews budget (${own.budget}% of flower vs. ${demand.budget}% of what members favorite), while premium demand (${demand.premium}%) is underrepresented on your shelves (${own.premium}%). Members in your area are favoriting higher-end strains you may be able to carry at a better margin.`;
+    }
+  }
+
+  return { own, demand, insight };
+}
+
 async function getUserFromRequest(req: NextRequest) {
   const authHeader = req.headers.get('authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
@@ -92,7 +182,7 @@ export async function POST(req: NextRequest) {
     // Existing menu strain ids for this dispensary, so we only surface gaps.
     const { data: existingProducts } = await admin
       .from('products')
-      .select('strain_id')
+      .select('strain_id, price')
       .eq('dispensary_id', dispensaryId)
       .eq('category', 'flower');
     const ownedStrainIds = new Set((existingProducts || []).map((p: any) => p.strain_id).filter(Boolean));
@@ -169,6 +259,14 @@ export async function POST(req: NextRequest) {
       .slice(0, 3)
       .map(([name]) => name);
 
+    // Price-tier mix: is this dispensary's own flower menu skewed toward a
+    // price tier that local demand doesn't actually support? Demand-side
+    // tier comes from what members are favoriting, priced using each
+    // strain's platform-wide average listed price (not this dispensary's
+    // own price for it) -- so it reflects what people want, not what this
+    // dispensary happens to charge.
+    const priceTierMix = await buildPriceTierMix(admin, dispensaryId, existingProducts || [], favCounts);
+
     return NextResponse.json({
       locked: false,
       tier,
@@ -176,6 +274,7 @@ export async function POST(req: NextRequest) {
       platformWide,
       topOpportunities: scored,
       tasteProfile,
+      priceTierMix,
     });
   } catch (err: any) {
     console.error('demand insights route error', err);

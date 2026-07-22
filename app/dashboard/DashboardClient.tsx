@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabaseClient';
 import { Dispensary, Product, ProductCategory, PRODUCT_CATEGORIES, Strain } from '@/lib/types';
+import DownloadCmfTemplateButton from '@/components/DownloadCmfTemplateButton';
 
 type OwnedDispensary = Dispensary & {
   products: Product[];
@@ -120,6 +121,20 @@ export default function DashboardClient() {
     load();
   };
 
+  const importMenu = async (dispensaryId: string, csv: string) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return { error: 'You need to be signed in.' };
+    const res = await fetch('/api/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ dispensaryId, csv }),
+    });
+    const data = await res.json();
+    if (res.ok) load();
+    return data;
+  };
+
   const upgrade = async (dispensaryId: string, tier: 'pro' | 'verified') => {
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
@@ -180,6 +195,7 @@ export default function DashboardClient() {
               onUpdateProduct={updateProduct}
               onRemoveProduct={removeProduct}
               onUpgrade={(tier) => upgrade(d.id, tier)}
+              onImportMenu={(csv) => importMenu(d.id, csv)}
             />
           ))}
         </div>
@@ -198,6 +214,7 @@ function DispensaryPanel({
   onUpdateProduct,
   onRemoveProduct,
   onUpgrade,
+  onImportMenu,
 }: {
   dispensary: OwnedDispensary;
   allStrains: Strain[];
@@ -208,6 +225,7 @@ function DispensaryPanel({
   onUpdateProduct: (productId: string, fields: Partial<Product>) => void;
   onRemoveProduct: (productId: string) => void;
   onUpgrade: (tier: 'pro' | 'verified') => void;
+  onImportMenu: (csv: string) => Promise<any>;
 }) {
   const [category, setCategory] = useState<ProductCategory>('flower');
   const [strainId, setStrainId] = useState('');
@@ -216,6 +234,21 @@ function DispensaryPanel({
   const [price, setPrice] = useState('');
   const [thc, setThc] = useState('');
   const [cbd, setCbd] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+
+  const handleImportFile = async (file: File) => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const result = await onImportMenu(text);
+      setImportResult(result);
+    } catch (err) {
+      setImportResult({ error: 'Could not read that file.' });
+    }
+    setImporting(false);
+  };
 
   const productsByCategory = PRODUCT_CATEGORIES.map((c) => ({
     ...c,
@@ -342,9 +375,66 @@ function DispensaryPanel({
       </button>
 
       {/* Menu / inventory -- full catalog across every category */}
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-canopy-muted">
-        Menu ({dispensary.products.length})
-      </h3>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-canopy-muted">
+          Menu ({dispensary.products.length})
+        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/cmf" className="text-xs text-canopy-green hover:underline">
+            CMF-1 format guide
+          </Link>
+          <DownloadCmfTemplateButton className="rounded-full border border-canopy-border px-3 py-1.5 text-xs font-medium hover:border-canopy-green" />
+          <label className="cursor-pointer rounded-full bg-canopy-card border border-canopy-green/40 px-3 py-1.5 text-xs font-semibold text-canopy-green hover:bg-canopy-green/10">
+            {importing ? 'Importing…' : 'Import CMF-1 CSV'}
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              disabled={importing}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportFile(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {importResult && (
+        <div
+          className={`mb-4 rounded-xl border px-4 py-3 text-xs ${
+            importResult.error
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : 'border-canopy-green/40 bg-canopy-green/10 text-canopy-text'
+          }`}
+        >
+          {importResult.error ? (
+            <p>{importResult.error}</p>
+          ) : (
+            <>
+              <p className="font-medium text-canopy-green">
+                Imported: {importResult.created} added, {importResult.updated} updated, {importResult.removed} removed
+                (of {importResult.totalRows} rows).
+              </p>
+              {importResult.unmatchedSlugs?.length > 0 && (
+                <p className="mt-1 text-canopy-muted">
+                  No strain match for: {importResult.unmatchedSlugs.join(', ')} -- these rows imported without a
+                  strain link.
+                </p>
+              )}
+              {importResult.parseErrors?.length > 0 && (
+                <ul className="mt-1 list-disc pl-4 text-canopy-muted">
+                  {importResult.parseErrors.slice(0, 10).map((e: any, i: number) => (
+                    <li key={i}>{e.line ? `Line ${e.line}: ` : ''}{e.message}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="mb-6 space-y-4">
         {productsByCategory
           .filter((c) => c.items.length > 0)
@@ -499,6 +589,19 @@ function DispensaryPanel({
   );
 }
 
+interface PriceTierBreakdown {
+  budget: number;
+  mid: number;
+  premium: number;
+  total: number;
+}
+
+interface PriceTierMix {
+  own: PriceTierBreakdown;
+  demand: PriceTierBreakdown;
+  insight: string | null;
+}
+
 interface DemandData {
   locked: boolean;
   tier: string;
@@ -514,6 +617,7 @@ interface DemandData {
     reviewCount: number;
   }[];
   tasteProfile?: string[];
+  priceTierMix?: PriceTierMix | null;
 }
 
 function DemandInsights({
@@ -610,7 +714,58 @@ function DemandInsights({
               ))}
             </div>
           )}
+
+          {data.priceTierMix && data.priceTierMix.own.total > 0 && (
+            <PriceTierMixPanel mix={data.priceTierMix} />
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function PriceTierMixPanel({ mix }: { mix: PriceTierMix }) {
+  const rows: { label: string; key: keyof PriceTierBreakdown }[] = [
+    { label: 'Budget (<$30)', key: 'budget' },
+    { label: 'Mid ($30–$55)', key: 'mid' },
+    { label: 'Premium (>$55)', key: 'premium' },
+  ];
+
+  return (
+    <div className="mt-5 rounded-xl border border-canopy-border bg-canopy-card p-4">
+      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
+        Price-Tier Mix: Your Menu vs. Local Demand
+      </h4>
+      <p className="mb-3 text-[11px] text-canopy-muted">
+        "Demand" prices what members are favoriting using each strain's platform-wide average
+        listed price — so it reflects what people want, not what you happen to charge.
+      </p>
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.key} className="text-xs">
+            <div className="mb-1 flex items-center justify-between text-canopy-muted">
+              <span>{r.label}</span>
+              <span>
+                You {mix.own[r.key]}% · Demand {mix.demand.total > 0 ? `${mix.demand[r.key]}%` : '—'}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canopy-bg">
+                <div className="h-full bg-canopy-green" style={{ width: `${mix.own[r.key]}%` }} />
+              </div>
+              {mix.demand.total > 0 && (
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-canopy-bg">
+                  <div className="h-full bg-canopy-purple" style={{ width: `${mix.demand[r.key]}%` }} />
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {mix.insight && (
+        <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+          {mix.insight}
+        </p>
       )}
     </div>
   );

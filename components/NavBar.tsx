@@ -32,6 +32,7 @@ export default function NavBar() {
     { href: '/community', label: 'Community' },
     { href: '/learn', label: 'Learn' },
     { href: '/insights', label: 'Insights' },
+    { href: '/cmf', label: 'CMF-1 Spec' },
     { href: '/legal', label: 'Legal' },
   ];
 

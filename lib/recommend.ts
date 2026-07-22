@@ -69,6 +69,74 @@ export function heuristicRecommend(message: string, strains: Strain[], limit = 4
   return top.map((x) => x.s);
 }
 
+// Terpene-profile similarity -- used on strain detail pages to surface
+// strains with a similar "feel" by chemistry rather than just a shared
+// Indica/Sativa/Hybrid label, including strains from anywhere in the
+// catalog a shopper (or dispensary) might never have searched for by name.
+function terpeneVector(strain: Strain): Record<string, number> {
+  const v: Record<string, number> = {};
+  for (const t of strain.terpenes || []) {
+    v[t.name] = (v[t.name] || 0) + (Number(t.percentage) || 0);
+  }
+  return v;
+}
+
+function cosineSimilarity(a: Record<string, number>, b: Record<string, number>): number {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (const k of keys) {
+    const av = a[k] || 0;
+    const bv = b[k] || 0;
+    dot += av * bv;
+    magA += av * av;
+    magB += bv * bv;
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+export interface TerpeneSimilarResult {
+  strain: Strain;
+  similarity: number; // 0-1, cosine similarity of terpene profiles
+  sharedTerpenes: string[]; // dominant terpenes present in both profiles
+}
+
+/**
+ * Ranks `candidates` by how closely their terpene profile matches `strain`'s,
+ * regardless of Indica/Sativa/Hybrid type -- so a hybrid leaning heavy on
+ * myrcene can surface a myrcene-dominant indica or sativa a shopper (or a
+ * dispensary sourcing new inventory) might otherwise never have found.
+ */
+export function terpeneSimilarStrains(
+  strain: Strain,
+  candidates: Strain[],
+  limit = 4
+): TerpeneSimilarResult[] {
+  const target = terpeneVector(strain);
+  const targetTop = new Set(
+    Object.entries(target)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name)
+  );
+
+  const scored = candidates
+    .filter((c) => c.id !== strain.id)
+    .map((c) => {
+      const vec = terpeneVector(c);
+      const similarity = cosineSimilarity(target, vec);
+      const sharedTerpenes = Object.keys(vec).filter((name) => targetTop.has(name));
+      return { strain: c, similarity, sharedTerpenes };
+    })
+    .filter((x) => x.similarity > 0)
+    .sort((a, b) => b.similarity - a.similarity || b.strain.rating - a.strain.rating)
+    .slice(0, limit);
+
+  return scored;
+}
+
 export function heuristicReply(message: string, picks: Strain[]): string {
   if (picks.length === 0) {
     return "I couldn't find a great match for that -- try describing how you want to feel, or a symptom you're dealing with (e.g. \"something to help me sleep\" or \"low-key energy for daytime\").";
