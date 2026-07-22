@@ -1,0 +1,65 @@
+@import url('https://fonts.googleapis.com/css2?family=Righteous&family=Manrope:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background-color: #0B0F0C;
+  color: #EFFFF3;
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+}
+
+h1, h2, .font-groovy {
+  font-family: 'Righteous', cursive;
+  letter-spacing: 0.01em;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #121913;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(#39FF6A, #B14CFF);
+  border-radius: 8px;
+}
+
+/* Trippy leaf texture used behind sections */
+.leaf-texture {
+  background-image: radial-gradient(circle at 20% 20%, rgba(57,255,106,0.08) 0, transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(177,76,255,0.10) 0, transparent 40%),
+    radial-gradient(circle at 50% 100%, rgba(255,76,200,0.08) 0, transparent 40%);
+}
+
+.text-gradient-trippy {
+  background: linear-gradient(90deg, #39FF6A 0%, #C8FF3D 25%, #B14CFF 60%, #FF4CC8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn-glow {
+  box-shadow: 0 0 20px rgba(57, 255, 106, 0.5), 0 0 45px rgba(177, 76, 255, 0.25);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(57, 255, 106, 0.75), 0 0 70px rgba(255, 76, 200, 0.35);
+  transform: translateY(-1px);
+}
+
+.card-glow-hover {
+  transition: box-shadow 0.3s ease, transform 0.2s ease, border-color 0.3s ease;
+}
+.card-glow-hover:hover {
+  box-shadow: 0 0 24px rgba(57, 255, 106, 0.25), 0 0 50px rgba(177, 76, 255, 0.15);
+  transform: translateY(-2px);
+}
