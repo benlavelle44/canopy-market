@@ -132,6 +132,17 @@ export interface Review {
   profiles?: { name: string | null } | null;
 }
 
+export interface DispensaryReview {
+  id: string;
+  dispensary_id: string;
+  user_id: string;
+  rating: number;
+  body: string | null;
+  owner_response: string | null;
+  owner_response_at: string | null;
+  created_at: string;
+}
+
 export interface LeaderboardEntry {
   id: string;
   name: string;

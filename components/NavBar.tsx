@@ -74,13 +74,10 @@ export default function NavBar() {
           {email ? (
             <>
               <Link href="/dashboard" className="text-sm text-canopy-muted hover:text-canopy-text">
-                Dashboard
-              </Link>
-              <Link href="/favorites" className="text-sm text-canopy-muted hover:text-canopy-text">
-                Favorites
+                My Dispensary
               </Link>
               <Link href="/account" className="text-sm text-canopy-muted hover:text-canopy-text">
-                {email.split('@')[0]}
+                My Dashboard
               </Link>
               <button
                 onClick={handleSignOut}
@@ -121,13 +118,10 @@ export default function NavBar() {
             {email ? (
               <>
                 <Link href="/dashboard" className="text-canopy-muted">
-                  Dashboard
-                </Link>
-                <Link href="/favorites" className="text-canopy-muted">
-                  Favorites
+                  My Dispensary
                 </Link>
                 <Link href="/account" className="text-canopy-muted">
-                  Account
+                  My Dashboard
                 </Link>
                 <button onClick={handleSignOut} className="text-left text-canopy-muted">
                   Sign out

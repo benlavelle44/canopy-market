@@ -125,16 +125,16 @@ export default function StrainFinder({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mt-8 space-y-4">
       {suggestions.length > 0 && (
-        <div>
-          <p className="mb-2 text-sm text-canopy-text">Did you mean:</p>
+        <div className="rounded-2xl border border-canopy-green/30 bg-canopy-green/5 p-5">
+          <p className="mb-2.5 text-sm font-medium text-canopy-text">Did you mean one of these?</p>
           <div className="flex flex-wrap gap-2">
             {suggestions.map((s) => (
               <Link
                 key={s.slug}
                 href={`/strains/${s.slug}`}
-                className="rounded-full border border-canopy-green/40 bg-canopy-green/10 px-3 py-1.5 text-sm font-medium text-canopy-green hover:bg-canopy-green/20"
+                className="rounded-full border border-canopy-green/40 bg-canopy-card px-3 py-1.5 text-sm font-medium text-canopy-green hover:bg-canopy-green/20"
               >
                 {s.name}
               </Link>
@@ -144,11 +144,12 @@ export default function StrainFinder({
       )}
 
       {!query ? null : (
-        <div className="rounded-2xl border border-canopy-purple/30 bg-canopy-bg p-5">
-          <div className="mb-1 flex items-center gap-2">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-canopy-text">AI Strain Finder</h3>
-            <span className="rounded-full border border-canopy-purple/40 bg-canopy-purple/10 px-2 py-0.5 text-[10px] font-medium text-canopy-purple">
-              Community
+        <div className="card-glow-hover overflow-hidden rounded-3xl border border-canopy-purple/40 bg-gradient-to-br from-canopy-purple/10 via-canopy-bg to-canopy-green/5 p-6 shadow-glowsm">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-2xl">🔮</span>
+            <h3 className="text-base font-semibold text-canopy-text">AI Strain Finder</h3>
+            <span className="rounded-full border border-canopy-purple/40 bg-canopy-purple/10 px-2.5 py-0.5 text-[10px] font-medium text-canopy-purple">
+              Community-Powered
             </span>
           </div>
 

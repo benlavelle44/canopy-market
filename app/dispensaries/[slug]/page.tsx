@@ -3,8 +3,11 @@ import Link from 'next/link';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { Dispensary, Product, Strain, PRODUCT_CATEGORIES } from '@/lib/types';
 import TypeBadge from '@/components/TypeBadge';
+import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
 
 export const revalidate = 0;
+
+const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
 async function getDispensary(slug: string) {
   const supabase = createServerReadClient();
@@ -15,36 +18,70 @@ async function getDispensary(slug: string) {
     .maybeSingle();
   if (!dispensary) return null;
 
-  const { data: products } = await supabase
-    .from('products')
-    .select('*, strains(*)')
-    .eq('dispensary_id', dispensary.id)
-    .order('category');
+  const [{ data: products }, { data: reviews }] = await Promise.all([
+    supabase.from('products').select('*, strains(*)').eq('dispensary_id', dispensary.id).order('category'),
+    supabase.from('dispensary_reviews').select('rating').eq('dispensary_id', dispensary.id),
+  ]);
+
+  const reviewCount = (reviews || []).length;
+  const avgRating = reviewCount > 0 ? (reviews as any[]).reduce((s, r) => s + r.rating, 0) / reviewCount : 0;
 
   return {
     dispensary: dispensary as Dispensary,
     products: (products || []) as (Product & { strains: Strain | null })[],
+    avgRating,
+    reviewCount,
   };
 }
 
 export default async function DispensaryDetailPage({ params }: { params: { slug: string } }) {
   const result = await getDispensary(params.slug);
   if (!result) notFound();
-  const { dispensary, products } = result;
+  const { dispensary, products, avgRating, reviewCount } = result;
 
   const byCategory = PRODUCT_CATEGORIES.map((c) => ({
     ...c,
-    items: products.filter((p) => p.category === c.id),
+    items: [...products.filter((p) => p.category === c.id)].sort((a, b) => Number(b.in_stock) - Number(a.in_stock)),
   })).filter((c) => c.items.length > 0);
+
+  const inStockCount = products.filter((p) => p.in_stock).length;
+  const today = DAY_ORDER[new Date().getDay()];
+  const mapQuery = encodeURIComponent(
+    [dispensary.address, dispensary.city, dispensary.state, dispensary.zip].filter(Boolean).join(', ')
+  );
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
-      <div className="mb-6 h-40 w-full rounded-2xl bg-gradient-to-br from-canopy-green/20 via-canopy-panel to-canopy-purple/20" />
+      {/* Banner + logo -- real photography if the dispensary provided it, gradient fallback otherwise */}
+      <div
+        className="relative mb-6 h-48 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-canopy-green/20 via-canopy-panel to-canopy-purple/20 bg-cover bg-center"
+        style={dispensary.banner_url ? { backgroundImage: `url(${dispensary.banner_url})` } : undefined}
+      >
+        {dispensary.logo_url && (
+          <div className="absolute -bottom-6 left-6 h-20 w-20 overflow-hidden rounded-2xl border-4 border-canopy-bg bg-canopy-card shadow-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={dispensary.logo_url} alt={`${dispensary.name} logo`} className="h-full w-full object-cover" />
+          </div>
+        )}
+      </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className={`flex flex-wrap items-start justify-between gap-4 ${dispensary.logo_url ? 'mt-8' : ''}`}>
         <div>
-          <div className="mb-1 flex items-center gap-3">
+          <div className="mb-1 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold">{dispensary.name}</h1>
+            {dispensary.tier === 'verified' && (
+              <span
+                title="Verified dispensary"
+                className="rounded-full border border-canopy-green/50 bg-canopy-green/10 px-2.5 py-0.5 text-xs font-semibold text-canopy-green"
+              >
+                ✓ Verified
+              </span>
+            )}
+            {dispensary.tier === 'pro' && (
+              <span className="rounded-full border border-canopy-gold/40 bg-canopy-gold/10 px-2.5 py-0.5 text-xs font-semibold text-canopy-gold">
+                Pro
+              </span>
+            )}
             {dispensary.status === 'pending' && (
               <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
                 Pending Verification
@@ -56,6 +93,20 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
             {dispensary.city}, {dispensary.state} {dispensary.zip}
           </p>
           {dispensary.phone && <p className="text-sm text-canopy-muted">{dispensary.phone}</p>}
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+            {reviewCount > 0 ? (
+              <span className="text-canopy-gold">
+                ★ {avgRating.toFixed(1)} <span className="text-canopy-muted">({reviewCount} reviews)</span>
+              </span>
+            ) : (
+              <span className="text-canopy-muted">No reviews yet</span>
+            )}
+            {products.length > 0 && (
+              <span className="text-canopy-muted">
+                <span className="text-canopy-green">{inStockCount}</span> of {products.length} items in stock
+              </span>
+            )}
+          </div>
         </div>
         {dispensary.website_url && (
           <a
@@ -71,7 +122,7 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
 
       {dispensary.description && <p className="mt-5 max-w-2xl text-canopy-text">{dispensary.description}</p>}
 
-      <div className="mt-8 grid gap-8 md:grid-cols-[1fr_260px]">
+      <div className="mt-8 grid gap-8 md:grid-cols-[1fr_280px]">
         <section>
           <h2 className="mb-4 text-xl font-semibold">Menu</h2>
           {products.length === 0 ? (
@@ -84,44 +135,55 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
                     {c.label}
                   </h3>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {c.items.map((p) =>
-                      p.strains ? (
-                        <Link
-                          key={p.id}
-                          href={`/strains/${p.strains.slug}`}
-                          className="flex items-center justify-between rounded-xl border border-canopy-border bg-canopy-card p-4 transition hover:border-canopy-green/50"
+                    {c.items.map((p) => {
+                      const card = (
+                        <div
+                          className={`flex items-center justify-between rounded-xl border p-4 transition ${
+                            p.in_stock
+                              ? 'border-canopy-border bg-canopy-card hover:border-canopy-green/50'
+                              : 'border-canopy-border/50 bg-canopy-card/50 opacity-60'
+                          }`}
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{p.strains.name}</span>
-                              <TypeBadge type={p.strains.type} />
+                              <span className="font-medium">{p.strains ? p.strains.name : p.name}</span>
+                              {p.strains && <TypeBadge type={p.strains.type} />}
+                              {!p.in_stock && (
+                                <span className="rounded-full border border-canopy-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-canopy-muted">
+                                  Out of stock
+                                </span>
+                              )}
                             </div>
-                            <p className="text-xs text-canopy-muted">
-                              THC {p.strains.thc}% · CBD {p.strains.cbd}%
-                            </p>
-                          </div>
-                          <span className="font-semibold text-canopy-green">{p.price ? `$${p.price}` : '—'}</span>
-                        </Link>
-                      ) : (
-                        <div
-                          key={p.id}
-                          className="flex items-center justify-between rounded-xl border border-canopy-border bg-canopy-card p-4"
-                        >
-                          <div>
-                            <span className="font-medium">{p.name}</span>
-                            {p.brand && <span className="ml-2 text-xs text-canopy-muted">{p.brand}</span>}
-                            {(p.thc || p.cbd) && (
+                            {p.strains ? (
                               <p className="text-xs text-canopy-muted">
-                                {p.thc ? `THC ${p.thc}%` : ''}
-                                {p.thc && p.cbd ? ' · ' : ''}
-                                {p.cbd ? `CBD ${p.cbd}%` : ''}
+                                THC {p.strains.thc}% · CBD {p.strains.cbd}%
                               </p>
+                            ) : (
+                              <>
+                                {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
+                                {(p.thc || p.cbd) && (
+                                  <p className="text-xs text-canopy-muted">
+                                    {p.thc ? `THC ${p.thc}%` : ''}
+                                    {p.thc && p.cbd ? ' · ' : ''}
+                                    {p.cbd ? `CBD ${p.cbd}%` : ''}
+                                  </p>
+                                )}
+                              </>
                             )}
                           </div>
-                          <span className="font-semibold text-canopy-green">{p.price ? `$${p.price}` : '—'}</span>
+                          <span className={`font-semibold ${p.in_stock ? 'text-canopy-green' : 'text-canopy-muted'}`}>
+                            {p.price ? `$${p.price}` : '—'}
+                          </span>
                         </div>
-                      )
-                    )}
+                      );
+                      return p.strains ? (
+                        <Link key={p.id} href={`/strains/${p.strains.slug}`}>
+                          {card}
+                        </Link>
+                      ) : (
+                        <div key={p.id}>{card}</div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -134,15 +196,34 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
               Hours
             </h3>
-            <ul className="space-y-1 text-sm text-canopy-muted">
+            <ul className="space-y-1 text-sm">
               {Object.entries(dispensary.hours || {}).map(([day, hrs]) => (
-                <li key={day} className="flex justify-between">
+                <li
+                  key={day}
+                  className={`flex justify-between ${
+                    day.toLowerCase() === today ? 'font-semibold text-canopy-green' : 'text-canopy-muted'
+                  }`}
+                >
                   <span className="capitalize">{day}</span>
                   <span>{hrs}</span>
                 </li>
               ))}
             </ul>
           </div>
+
+          {mapQuery && (
+            <div className="overflow-hidden rounded-xl border border-canopy-border">
+              <iframe
+                title={`Map to ${dispensary.name}`}
+                src={`https://www.google.com/maps?q=${mapQuery}&output=embed`}
+                width="100%"
+                height="200"
+                style={{ border: 0 }}
+                loading="lazy"
+              />
+            </div>
+          )}
+
           {dispensary.license_number && (
             <div className="rounded-xl border border-canopy-border bg-canopy-card p-4">
               <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
@@ -153,6 +234,8 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
           )}
         </aside>
       </div>
+
+      <DispensaryReviewsSection dispensaryId={dispensary.id} ownerId={dispensary.owner_id ?? null} />
     </div>
   );
 }

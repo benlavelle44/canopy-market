@@ -62,13 +62,18 @@ export default async function StrainsPage({
       <p className="mb-4 text-sm text-canopy-muted">{strains.length} strains found</p>
 
       {strains.length === 0 ? (
-        <div className="rounded-2xl border border-canopy-border bg-canopy-card p-6">
-          <p className="mb-4 text-canopy-muted">No strains match those filters.</p>
-          <Suspense fallback={null}>
-            <StrainFinder query={q} suggestions={suggestions} />
-          </Suspense>
+        <div className="rounded-2xl border border-dashed border-canopy-border/70 bg-canopy-bg/40 px-6 py-10 text-center">
+          <p className="text-canopy-muted">Nothing in the catalog matches those filters yet.</p>
         </div>
-      ) : (
+      ) : null}
+
+      {strains.length === 0 && q && (
+        <Suspense fallback={null}>
+          <StrainFinder query={q} suggestions={suggestions} />
+        </Suspense>
+      )}
+
+      {strains.length > 0 && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {strains.map((s) => (
             <StrainCard key={s.id} strain={s} />
