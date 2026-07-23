@@ -1,14 +1,19 @@
 import { Suspense } from 'react';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { Strain } from '@/lib/types';
+import { findSimilarNames } from '@/lib/fuzzy';
 import StrainCard from '@/components/StrainCard';
 import StrainFilters from './StrainFilters';
+import StrainFinder from '@/components/StrainFinder';
 
 export const revalidate = 0;
 
 async function getStrains(searchParams: { [key: string]: string | string[] | undefined }) {
   const supabase = createServerReadClient();
-  let query = supabase.from('strains').select('*').order('rating', { ascending: false });
+  // Only strains that have cleared review show up in browse/search --
+  // community finds sit as "pending" until an admin verifies them, though
+  // the person who added one can still open it directly by its own link.
+  let query = supabase.from('strains').select('*').eq('verification_status', 'verified').order('rating', { ascending: false });
 
   const q = typeof searchParams.q === 'string' ? searchParams.q : '';
   const type = typeof searchParams.type === 'string' ? searchParams.type : '';
@@ -22,12 +27,30 @@ async function getStrains(searchParams: { [key: string]: string | string[] | und
   return (data || []) as Strain[];
 }
 
+// For "did you mean" suggestions we need the full name list to compare
+// against, independent of whatever filters narrowed the zero-result query.
+async function getAllNames() {
+  const supabase = createServerReadClient();
+  const { data } = await supabase
+    .from('strains')
+    .select('slug, name')
+    .eq('verification_status', 'verified');
+  return (data || []) as { slug: string; name: string }[];
+}
+
 export default async function StrainsPage({
   searchParams,
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const strains = await getStrains(searchParams);
+  const q = typeof searchParams.q === 'string' ? searchParams.q.trim() : '';
+
+  let suggestions: { slug: string; name: string }[] = [];
+  if (strains.length === 0 && q) {
+    const allNames = await getAllNames();
+    suggestions = findSimilarNames(q, allNames, (n) => n.name).map((m) => m.item);
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -39,7 +62,12 @@ export default async function StrainsPage({
       <p className="mb-4 text-sm text-canopy-muted">{strains.length} strains found</p>
 
       {strains.length === 0 ? (
-        <p className="text-canopy-muted">No strains match those filters. Try broadening your search.</p>
+        <div className="rounded-2xl border border-canopy-border bg-canopy-card p-6">
+          <p className="mb-4 text-canopy-muted">No strains match those filters.</p>
+          <Suspense fallback={null}>
+            <StrainFinder query={q} suggestions={suggestions} />
+          </Suspense>
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {strains.map((s) => (

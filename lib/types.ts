@@ -5,6 +5,14 @@ export interface Terpene {
   percentage: number;
 }
 
+export type StrainSource = 'canopy_original' | 'community_find';
+export type StrainVerificationStatus = 'verified' | 'pending' | 'rejected';
+
+export interface ResearchSource {
+  url: string;
+  title: string;
+}
+
 export interface Strain {
   id: string;
   slug: string;
@@ -19,6 +27,10 @@ export interface Strain {
   rating: number;
   review_count: number;
   featured: boolean;
+  source?: StrainSource;
+  verification_status?: StrainVerificationStatus;
+  found_by_user_id?: string | null;
+  research_sources?: ResearchSource[] | null;
 }
 
 export interface Dispensary {

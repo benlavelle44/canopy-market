@@ -1,9 +1,12 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServerReadClient } from '@/lib/supabaseServer';
-import { Strain, Dispensary, Product } from '@/lib/types';
+import { createAdminClient } from '@/lib/supabaseAdmin';
+import { Strain, Dispensary, Product, ResearchSource } from '@/lib/types';
 import { terpeneSimilarStrains } from '@/lib/recommend';
 import TypeBadge from '@/components/TypeBadge';
+import StrainSourceBadge from '@/components/StrainSourceBadge';
+import AiEstimateDisclaimer from '@/components/AiEstimateDisclaimer';
 import StrainThumb from '@/components/StrainThumb';
 import StrainCard from '@/components/StrainCard';
 import FavoriteButton from '@/components/FavoriteButton';
@@ -27,30 +30,56 @@ async function getStrain(slug: string) {
     .from('strains')
     .select('*')
     .eq('type', strain.type)
+    .eq('verification_status', 'verified')
     .neq('id', strain.id)
     .limit(4);
 
   // Full catalog (minus itself) so terpene-similarity can surface a match
   // from anywhere -- including strains of a different type the shopper (or
   // a dispensary sourcing new inventory) might never have searched for.
-  const { data: allStrains } = await supabase.from('strains').select('*').neq('id', strain.id);
+  const { data: allStrains } = await supabase
+    .from('strains')
+    .select('*')
+    .eq('verification_status', 'verified')
+    .neq('id', strain.id);
   const terpeneMatches = terpeneSimilarStrains(strain as Strain, (allStrains || []) as Strain[], 4);
+
+  // Credit to whoever found this via the AI Strain Finder. profiles is
+  // locked down by RLS to each user's own row, so a plain anon-key read
+  // can't see someone else's name -- the admin client can, and this is a
+  // read-only, single-field lookup purely for display credit.
+  let finderName: string | null = null;
+  if (strain.found_by_user_id) {
+    const admin = createAdminClient();
+    if (admin) {
+      const { data: finder } = await admin.from('profiles').select('name').eq('id', strain.found_by_user_id).maybeSingle();
+      finderName = finder?.name || null;
+    }
+  }
 
   return {
     strain: strain as Strain,
     listings: (products || []) as (Product & { dispensaries: Dispensary })[],
     similar: (similar || []) as Strain[],
     terpeneMatches,
+    finderName,
   };
 }
 
 export default async function StrainDetailPage({ params }: { params: { slug: string } }) {
   const result = await getStrain(params.slug);
   if (!result) notFound();
-  const { strain, listings, similar, terpeneMatches } = result;
+  const { strain, listings, similar, terpeneMatches, finderName } = result;
+  const isCommunityFind = strain.source === 'community_find';
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
+      {isCommunityFind && (
+        <div className="mb-6">
+          <AiEstimateDisclaimer sources={(strain.research_sources || []) as ResearchSource[]} />
+        </div>
+      )}
+
       <div className="grid gap-8 md:grid-cols-[280px_1fr]">
         <StrainThumb type={strain.type} className="h-56 w-full rounded-2xl md:h-full" />
 
@@ -58,12 +87,17 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
           <div className="mb-2 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold">{strain.name}</h1>
             <TypeBadge type={strain.type} />
+            <StrainSourceBadge source={strain.source} verificationStatus={strain.verification_status} />
           </div>
           <p className="mb-4 text-sm text-canopy-muted">
             ★ {strain.rating} · {strain.review_count.toLocaleString()} reviews · THC {strain.thc}% · CBD{' '}
             {strain.cbd}%
           </p>
-          <p className="mb-5 text-canopy-text">{strain.description}</p>
+          <p className="mb-2 text-canopy-text">{strain.description}</p>
+          {isCommunityFind && finderName && (
+            <p className="mb-5 text-xs text-canopy-muted">🌿 Discovered by {finderName} via the AI Strain Finder</p>
+          )}
+          {!isCommunityFind && <div className="mb-5" />}
 
           <FavoriteButton strainId={strain.id} />
 
