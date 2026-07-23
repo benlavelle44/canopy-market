@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { Dispensary, Product, Strain, PRODUCT_CATEGORIES } from '@/lib/types';
 import TypeBadge from '@/components/TypeBadge';
 import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
+import StrainPhoto from '@/components/StrainPhoto';
+import FlipProductCard from '@/components/FlipProductCard';
 
 export const revalidate = 0;
 
@@ -138,50 +139,64 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
                     {c.items.map((p) => {
                       const card = (
                         <div
-                          className={`flex items-center justify-between rounded-xl border p-4 transition ${
+                          className={`flex items-center gap-3 rounded-xl border p-4 transition ${
                             p.in_stock
                               ? 'border-canopy-border bg-canopy-card hover:border-canopy-green/50'
                               : 'border-canopy-border/50 bg-canopy-card/50 opacity-60'
                           }`}
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{p.strains ? p.strains.name : p.name}</span>
-                              {p.strains && <TypeBadge type={p.strains.type} />}
-                              {!p.in_stock && (
-                                <span className="rounded-full border border-canopy-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-canopy-muted">
-                                  Out of stock
-                                </span>
+                          <StrainPhoto
+                            type={p.strains?.type || 'Hybrid'}
+                            className="h-12 w-12 flex-shrink-0 rounded-lg"
+                          />
+                          <div className="flex flex-1 items-center justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{p.strains ? p.strains.name : p.name}</span>
+                                {p.strains && <TypeBadge type={p.strains.type} />}
+                                {!p.in_stock && (
+                                  <span className="rounded-full border border-canopy-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-canopy-muted">
+                                    Out of stock
+                                  </span>
+                                )}
+                              </div>
+                              {p.strains ? (
+                                <p className="text-xs text-canopy-muted">
+                                  THC {p.strains.thc}% · CBD {p.strains.cbd}%
+                                </p>
+                              ) : (
+                                <>
+                                  {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
+                                  {(p.thc || p.cbd) && (
+                                    <p className="text-xs text-canopy-muted">
+                                      {p.thc ? `THC ${p.thc}%` : ''}
+                                      {p.thc && p.cbd ? ' · ' : ''}
+                                      {p.cbd ? `CBD ${p.cbd}%` : ''}
+                                    </p>
+                                  )}
+                                </>
                               )}
                             </div>
-                            {p.strains ? (
-                              <p className="text-xs text-canopy-muted">
-                                THC {p.strains.thc}% · CBD {p.strains.cbd}%
-                              </p>
-                            ) : (
-                              <>
-                                {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
-                                {(p.thc || p.cbd) && (
-                                  <p className="text-xs text-canopy-muted">
-                                    {p.thc ? `THC ${p.thc}%` : ''}
-                                    {p.thc && p.cbd ? ' · ' : ''}
-                                    {p.cbd ? `CBD ${p.cbd}%` : ''}
-                                  </p>
-                                )}
-                              </>
-                            )}
+                            <span
+                              className={`whitespace-nowrap font-semibold ${p.in_stock ? 'text-canopy-green' : 'text-canopy-muted'}`}
+                            >
+                              {p.price ? `$${p.price}` : '—'}
+                            </span>
                           </div>
-                          <span className={`font-semibold ${p.in_stock ? 'text-canopy-green' : 'text-canopy-muted'}`}>
-                            {p.price ? `$${p.price}` : '—'}
-                          </span>
                         </div>
                       );
-                      return p.strains ? (
-                        <Link key={p.id} href={`/strains/${p.strains.slug}`}>
+                      // Flips to the dispensary's own uploaded photo of this
+                      // product when they've provided one -- otherwise this
+                      // is just a plain (optionally strain-linked) card.
+                      return (
+                        <FlipProductCard
+                          key={p.id}
+                          imageUrl={p.image_url}
+                          photoCredit={dispensary.name}
+                          href={p.strains ? `/strains/${p.strains.slug}` : undefined}
+                        >
                           {card}
-                        </Link>
-                      ) : (
-                        <div key={p.id}>{card}</div>
+                        </FlipProductCard>
                       );
                     })}
                   </div>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTerpeneColor } from '@/lib/terpeneProfiles';
 
 const SECTIONS = [
   { id: 'types', label: 'Indica vs Sativa vs Hybrid' },
@@ -53,14 +54,30 @@ export default function LearnPage() {
           <p className="mb-3 text-canopy-muted">
             Terpenes are the aromatic compounds that give each strain its smell and flavor — and
             they're believed to shape effects too, working alongside THC and CBD (the
-            "entourage effect"). A few common ones you'll see on strain pages here:
+            "entourage effect"). Every strain page color-codes its terpenes so you can see the
+            thread from chemistry to effect at a glance -- same colors as here:
           </p>
           <ul className="space-y-2 text-sm text-canopy-muted">
-            <li><span className="text-canopy-text">Myrcene</span> — earthy, musky; associated with sedation and relaxation.</li>
-            <li><span className="text-canopy-text">Limonene</span> — citrusy; associated with elevated mood.</li>
-            <li><span className="text-canopy-text">Caryophyllene</span> — peppery, spicy; the only terpene known to also act on cannabinoid receptors directly.</li>
-            <li><span className="text-canopy-text">Pinene</span> — pine-like; associated with alertness.</li>
-            <li><span className="text-canopy-text">Linalool</span> — floral, lavender-like; associated with calm.</li>
+            {[
+              { name: 'Myrcene', note: 'earthy, musky; associated with sedation and relaxation.' },
+              { name: 'Limonene', note: 'citrusy; associated with elevated mood.' },
+              {
+                name: 'Caryophyllene',
+                note: 'peppery, spicy; the only terpene known to also act on cannabinoid receptors directly.',
+              },
+              { name: 'Pinene', note: 'pine-like; associated with alertness.' },
+              { name: 'Linalool', note: 'floral, lavender-like; associated with calm.' },
+            ].map((t) => (
+              <li key={t.name} className="flex items-start gap-2">
+                <span
+                  className="mt-1.5 inline-block h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: getTerpeneColor(t.name) }}
+                />
+                <span>
+                  <span className="text-canopy-text">{t.name}</span> — {t.note}
+                </span>
+              </li>
+            ))}
           </ul>
         </section>
 

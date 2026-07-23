@@ -7,7 +7,8 @@ import { terpeneSimilarStrains } from '@/lib/recommend';
 import TypeBadge from '@/components/TypeBadge';
 import StrainSourceBadge from '@/components/StrainSourceBadge';
 import AiEstimateDisclaimer from '@/components/AiEstimateDisclaimer';
-import StrainThumb from '@/components/StrainThumb';
+import StrainPhoto from '@/components/StrainPhoto';
+import VibeChemistry from '@/components/VibeChemistry';
 import StrainCard from '@/components/StrainCard';
 import FavoriteButton from '@/components/FavoriteButton';
 import ReviewsSection from '@/components/ReviewsSection';
@@ -74,14 +75,8 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
-      {isCommunityFind && (
-        <div className="mb-6">
-          <AiEstimateDisclaimer sources={(strain.research_sources || []) as ResearchSource[]} />
-        </div>
-      )}
-
       <div className="grid gap-8 md:grid-cols-[280px_1fr]">
-        <StrainThumb type={strain.type} className="h-56 w-full rounded-2xl md:h-full" />
+        <StrainPhoto type={strain.type} variant="hero" className="h-56 w-full rounded-2xl md:h-full" />
 
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-3">
@@ -92,6 +87,11 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
           <p className="mb-4 text-sm text-canopy-muted">
             ★ {strain.rating} · {strain.review_count.toLocaleString()} reviews · THC {strain.thc}% · CBD{' '}
             {strain.cbd}%
+            {isCommunityFind && (
+              <a href="#disclaimer" className="ml-0.5 text-yellow-400 hover:underline">
+                *
+              </a>
+            )}
           </p>
           <p className="mb-2 text-canopy-text">{strain.description}</p>
           {isCommunityFind && finderName && (
@@ -101,44 +101,8 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
 
           <FavoriteButton strainId={strain.id} />
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
-                Effects
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {strain.effects.map((e) => (
-                  <span key={e} className="rounded-full bg-canopy-card px-2.5 py-1 text-xs">
-                    {e}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
-                May help with
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {strain.symptoms.map((s) => (
-                  <span key={s} className="rounded-full bg-canopy-card px-2.5 py-1 text-xs">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-canopy-muted">
-                Terpenes
-              </h3>
-              <div className="space-y-1 text-xs text-canopy-muted">
-                {strain.terpenes.map((t) => (
-                  <div key={t.name} className="flex justify-between">
-                    <span>{t.name}</span>
-                    <span>{(t.percentage * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="mt-6">
+            <VibeChemistry strain={strain} />
           </div>
         </div>
       </div>
@@ -216,6 +180,12 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
             ))}
           </div>
         </section>
+      )}
+
+      {isCommunityFind && (
+        <div className="mt-12">
+          <AiEstimateDisclaimer id="disclaimer" sources={(strain.research_sources || []) as ResearchSource[]} />
+        </div>
       )}
 
       <ReviewsSection strainId={strain.id} />

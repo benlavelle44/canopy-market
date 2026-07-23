@@ -234,7 +234,7 @@ export default function StrainFinder({
                   <span className="font-semibold">{candidate.name}</span>
                   <TypeBadge type={candidate.type} />
                   <span className="text-xs text-canopy-muted">
-                    THC ~{candidate.thc}% · CBD ~{candidate.cbd}%
+                    THC ~{candidate.thc}% · CBD ~{candidate.cbd}%*
                   </span>
                 </div>
                 <p className="mb-3 text-sm text-canopy-muted">{candidate.description}</p>
@@ -250,6 +250,7 @@ export default function StrainFinder({
                     </span>
                   ))}
                 </div>
+                {/* Disclaimer stays at the bottom of the preview, right above the confirm buttons */}
                 <AiEstimateDisclaimer sources={sources} compact />
               </div>
               <div className="flex gap-2">
