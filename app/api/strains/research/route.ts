@@ -35,6 +35,33 @@ interface ResearchCandidate {
   terpenes: { name: string; percentage: number }[];
 }
 
+// Claude's final message, when web search is enabled, sometimes reasons in
+// prose before landing on the JSON answer despite instructions to end with
+// only JSON -- so rather than assume the whole text block IS the JSON, pull
+// the JSON out of wherever it ended up: a fenced code block if present,
+// otherwise the outermost {...} span, otherwise the whole trimmed text as a
+// last resort.
+function extractTrailingJson(text: string): any {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {
+      // fall through to brace matching
+    }
+  }
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+    } catch {
+      // fall through to raw parse, which will throw and be handled by the caller
+    }
+  }
+  return JSON.parse(text.trim());
+}
+
 async function researchStrain(query: string): Promise<
   | { found: false; reason: string }
   | { found: true; candidate: ResearchCandidate; sources: { url: string; title: string }[] }
@@ -48,7 +75,7 @@ Be skeptical: if you can't find genuine, consistent information from real source
 
 If you DO confidently identify it, respond with your best-estimate typical values (not ranges) -- these will be shown to the user labeled as AI estimates, not lab-verified numbers.
 
-Respond with ONLY valid JSON (no markdown fences), matching exactly one of these two shapes:
+You may reason through the evidence first, but your message must END with exactly one JSON object matching one of these two shapes, and nothing after it -- no closing remarks, no sign-off:
 
 Not found / not confident:
 {"found": false, "reason": "one sentence explaining why (e.g. no reliable sources, likely a typo, too generic)"}
@@ -103,8 +130,7 @@ effects and symptoms should each have 2-4 items using these exact vocabularies w
   }
 
   try {
-    const cleaned = finalText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
-    const parsed = JSON.parse(cleaned);
+    const parsed = extractTrailingJson(finalText);
     if (!parsed.found) {
       return { found: false, reason: parsed.reason || "Couldn't confidently identify that strain." };
     }
