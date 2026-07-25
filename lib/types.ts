@@ -132,6 +132,36 @@ export interface Review {
   profiles?: { name: string | null } | null;
 }
 
+export type GrowStage = 'seedling' | 'vegetative' | 'flowering' | 'pre-harvest' | 'harvested';
+
+export const GROW_STAGES: { id: GrowStage; label: string }[] = [
+  { id: 'seedling', label: 'Seedling' },
+  { id: 'vegetative', label: 'Vegetative' },
+  { id: 'flowering', label: 'Flowering' },
+  { id: 'pre-harvest', label: 'Pre-Harvest' },
+  { id: 'harvested', label: 'Harvested' },
+];
+
+export interface StrainPhoto {
+  id: string;
+  strain_id: string;
+  submitted_by: string;
+  image_url: string;
+  grow_stage: GrowStage;
+  caption: string | null;
+  credit_name: string | null;
+  verification_status: StrainVerificationStatus;
+  created_at: string;
+}
+
+export interface StrainPhotoRating {
+  id: string;
+  photo_id: string;
+  user_id: string;
+  rating: number;
+  created_at: string;
+}
+
 export interface DispensaryReview {
   id: string;
   dispensary_id: string;

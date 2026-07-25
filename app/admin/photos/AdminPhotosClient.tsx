@@ -3,18 +3,21 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabaseClient';
-import TypeBadge from '@/components/TypeBadge';
-import AiEstimateDisclaimer from '@/components/AiEstimateDisclaimer';
-import { Strain, ResearchSource } from '@/lib/types';
+import { StrainPhoto, GROW_STAGES } from '@/lib/types';
 
-type PendingStrain = Strain & { finder: { name: string | null; email: string | null } | null };
+type PendingPhoto = StrainPhoto & {
+  strains: { name: string; slug: string } | null;
+  submitter: { name: string | null; email: string | null } | null;
+};
 
 type LoadState = 'loading' | 'unauthorized' | 'ready' | 'error';
 
-export default function AdminStrainsClient() {
+const STAGE_LABEL: Record<string, string> = Object.fromEntries(GROW_STAGES.map((s) => [s.id, s.label]));
+
+export default function AdminPhotosClient() {
   const supabase = createClient();
   const [state, setState] = useState<LoadState>('loading');
-  const [strains, setStrains] = useState<PendingStrain[]>([]);
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
 
@@ -25,7 +28,7 @@ export default function AdminStrainsClient() {
       setState('unauthorized');
       return;
     }
-    const res = await fetch('/api/strains/review', { headers: { authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/strains/photos/review', { headers: { authorization: `Bearer ${token}` } });
     if (res.status === 401 || res.status === 403) {
       setState('unauthorized');
       return;
@@ -35,7 +38,7 @@ export default function AdminStrainsClient() {
       return;
     }
     const data = await res.json();
-    setStrains(data.strains || []);
+    setPhotos(data.photos || []);
     setState('ready');
   };
 
@@ -44,25 +47,25 @@ export default function AdminStrainsClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const act = async (strainId: string, action: 'approve' | 'reject') => {
-    setBusyId(strainId);
+  const act = async (photoId: string, action: 'approve' | 'reject') => {
+    setBusyId(photoId);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
       setState('unauthorized');
       return;
     }
-    const res = await fetch('/api/strains/review', {
+    const res = await fetch('/api/strains/photos/review', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ strainId, action }),
+      body: JSON.stringify({ photoId, action }),
     });
     const data = await res.json();
     if (res.ok) {
-      setStrains((prev) => prev.filter((s) => s.id !== strainId));
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
       setNotice(
         action === 'approve'
-          ? `Verified${data.awardedPoints ? ` — awarded ${data.awardedPoints} points to the finder.` : '.'}`
+          ? `Verified — awarded ${data.awardedPoints} points to the submitter.`
           : 'Rejected and removed.'
       );
       setTimeout(() => setNotice(''), 3000);
@@ -89,13 +92,13 @@ export default function AdminStrainsClient() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-groovy text-3xl text-gradient-trippy">Strain Review Queue</h1>
-        <Link href="/admin/photos" className="text-xs text-canopy-green hover:underline">
-          Grow Photo Queue →
+        <h1 className="font-groovy text-3xl text-gradient-trippy">Grow Photo Review Queue</h1>
+        <Link href="/admin/strains" className="text-xs text-canopy-green hover:underline">
+          Strain Review Queue →
         </Link>
       </div>
       <p className="mb-6 text-sm text-canopy-muted">
-        AI Strain Finder submissions waiting on verification before they appear in general browse/search.
+        Community-submitted grow photos waiting on verification before they appear on strain pages.
       </p>
 
       {notice && (
@@ -104,60 +107,48 @@ export default function AdminStrainsClient() {
         </div>
       )}
 
-      {strains.length === 0 ? (
+      {photos.length === 0 ? (
         <p className="text-canopy-muted">Nothing pending right now.</p>
       ) : (
-        <div className="space-y-5">
-          {strains.map((s) => (
-            <div key={s.id} className="rounded-2xl border border-canopy-border bg-canopy-card p-5">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link href={`/strains/${s.slug}`} target="_blank" className="font-semibold hover:text-canopy-green">
-                    {s.name}
-                  </Link>
-                  <TypeBadge type={s.type} />
-                  <span className="text-xs text-canopy-muted">
-                    THC ~{s.thc}% · CBD ~{s.cbd}%
+        <div className="grid gap-5 sm:grid-cols-2">
+          {photos.map((p) => (
+            <div key={p.id} className="overflow-hidden rounded-2xl border border-canopy-border bg-canopy-card">
+              <div className="aspect-square">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.image_url} alt={p.caption || 'Grow photo'} className="h-full w-full object-cover" />
+              </div>
+              <div className="p-4">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  {p.strains && (
+                    <Link href={`/strains/${p.strains.slug}`} target="_blank" className="font-semibold hover:text-canopy-green">
+                      {p.strains.name}
+                    </Link>
+                  )}
+                  <span className="rounded-full bg-canopy-bg px-2 py-0.5 text-[10px] text-canopy-muted">
+                    {STAGE_LABEL[p.grow_stage] || p.grow_stage}
                   </span>
                 </div>
+                {p.caption && <p className="mb-1 text-sm text-canopy-muted">{p.caption}</p>}
+                <p className="mb-3 text-xs text-canopy-muted">
+                  Submitted by: {p.credit_name || p.submitter?.name || p.submitter?.email || 'Unknown member'}
+                </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => act(s.id, 'approve')}
-                    disabled={busyId === s.id}
+                    onClick={() => act(p.id, 'approve')}
+                    disabled={busyId === p.id}
                     className="rounded-full bg-canopy-green px-4 py-1.5 text-xs font-semibold text-black disabled:opacity-50"
                   >
-                    {busyId === s.id ? '…' : 'Approve & Verify'}
+                    {busyId === p.id ? '…' : 'Approve & Verify'}
                   </button>
                   <button
-                    onClick={() => act(s.id, 'reject')}
-                    disabled={busyId === s.id}
+                    onClick={() => act(p.id, 'reject')}
+                    disabled={busyId === p.id}
                     className="rounded-full border border-red-500/40 px-4 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                   >
                     Reject
                   </button>
                 </div>
               </div>
-
-              <p className="mb-2 text-sm text-canopy-muted">{s.description}</p>
-
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {s.effects.map((e) => (
-                  <span key={e} className="rounded-full bg-canopy-bg px-2.5 py-1 text-xs">
-                    {e}
-                  </span>
-                ))}
-                {s.symptoms.map((sym) => (
-                  <span key={sym} className="rounded-full bg-canopy-bg px-2.5 py-1 text-xs text-canopy-muted">
-                    {sym}
-                  </span>
-                ))}
-              </div>
-
-              <p className="mb-3 text-xs text-canopy-muted">
-                Found by: {s.finder?.name || s.finder?.email || 'Unknown member'}
-              </p>
-
-              <AiEstimateDisclaimer sources={(s.research_sources || []) as ResearchSource[]} compact />
             </div>
           ))}
         </div>

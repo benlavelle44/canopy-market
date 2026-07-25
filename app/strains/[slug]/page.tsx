@@ -9,6 +9,7 @@ import StrainSourceBadge from '@/components/StrainSourceBadge';
 import AiEstimateDisclaimer from '@/components/AiEstimateDisclaimer';
 import StrainPhoto from '@/components/StrainPhoto';
 import VibeChemistry from '@/components/VibeChemistry';
+import GrowPhotoGallery from '@/components/GrowPhotoGallery';
 import StrainCard from '@/components/StrainCard';
 import FavoriteButton from '@/components/FavoriteButton';
 import ReviewsSection from '@/components/ReviewsSection';
@@ -45,6 +46,39 @@ async function getStrain(slug: string) {
     .neq('id', strain.id);
   const terpeneMatches = terpeneSimilarStrains(strain as Strain, (allStrains || []) as Strain[], 4);
 
+  // Prefer a real, community-verified photo of THIS strain over the generic
+  // stock photo -- "Bruce Banner should show a picture of Bruce Banner."
+  // Picked by highest average community rating (then rating count, then
+  // recency) so a genuine 5-star pro grow wins the hero slot over a rough
+  // one-off submission.
+  let heroPhotoUrl: string | null = null;
+  const { data: verifiedPhotos } = await supabase
+    .from('strain_photos')
+    .select('id, image_url, created_at')
+    .eq('strain_id', strain.id)
+    .eq('verification_status', 'verified')
+    .order('created_at', { ascending: false });
+  if (verifiedPhotos && verifiedPhotos.length > 0) {
+    const { data: ratingRows } = await supabase
+      .from('strain_photo_ratings')
+      .select('photo_id, rating')
+      .in(
+        'photo_id',
+        verifiedPhotos.map((p: any) => p.id)
+      );
+    const scored = verifiedPhotos.map((p: any) => {
+      const ratings = (ratingRows || []).filter((r: any) => r.photo_id === p.id).map((r: any) => r.rating);
+      const avg = ratings.length ? ratings.reduce((s: number, r: number) => s + r, 0) / ratings.length : 0;
+      return { ...p, avg, count: ratings.length };
+    });
+    scored.sort((a: any, b: any) => {
+      if (b.avg !== a.avg) return b.avg - a.avg;
+      if (b.count !== a.count) return b.count - a.count;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    heroPhotoUrl = scored[0].image_url;
+  }
+
   // Credit to whoever found this via the AI Strain Finder. profiles is
   // locked down by RLS to each user's own row, so a plain anon-key read
   // can't see someone else's name -- the admin client can, and this is a
@@ -64,19 +98,30 @@ async function getStrain(slug: string) {
     similar: (similar || []) as Strain[],
     terpeneMatches,
     finderName,
+    heroPhotoUrl,
   };
 }
 
 export default async function StrainDetailPage({ params }: { params: { slug: string } }) {
   const result = await getStrain(params.slug);
   if (!result) notFound();
-  const { strain, listings, similar, terpeneMatches, finderName } = result;
+  const { strain, listings, similar, terpeneMatches, finderName, heroPhotoUrl } = result;
   const isCommunityFind = strain.source === 'community_find';
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <div className="grid gap-8 md:grid-cols-[280px_1fr]">
-        <StrainPhoto type={strain.type} variant="hero" className="h-56 w-full rounded-2xl md:h-full" />
+        {heroPhotoUrl ? (
+          <div className="relative h-56 w-full overflow-hidden rounded-2xl bg-canopy-panel md:h-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={heroPhotoUrl} alt={`Real photo of ${strain.name}`} className="h-full w-full object-cover" />
+            <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+              📷 Real community photo
+            </span>
+          </div>
+        ) : (
+          <StrainPhoto type={strain.type} variant="hero" className="h-56 w-full rounded-2xl md:h-full" />
+        )}
 
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-3">
@@ -148,6 +193,8 @@ export default async function StrainDetailPage({ params }: { params: { slug: str
           </div>
         )}
       </section>
+
+      <GrowPhotoGallery strainId={strain.id} />
 
       {terpeneMatches.length > 0 && (
         <section className="mt-12">
