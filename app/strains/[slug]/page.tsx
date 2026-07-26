@@ -102,8 +102,14 @@ async function getStrain(slug: string) {
   };
 }
 
-export default async function StrainDetailPage({ params }: { params: { slug: string } }) {
-  const result = await getStrain(params.slug);
+export default async function StrainDetailPage({
+  params,
+}: {
+  // Next.js 15: params is now a Promise -- must be awaited before use.
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const result = await getStrain(slug);
   if (!result) notFound();
   const { strain, listings, similar, terpeneMatches, finderName, heroPhotoUrl } = result;
   const isCommunityFind = strain.source === 'community_find';

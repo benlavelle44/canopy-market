@@ -21,9 +21,11 @@ async function getDispensaries(state?: string) {
 export default async function DispensariesPage({
   searchParams,
 }: {
-  searchParams: { state?: string };
+  // Next.js 15: searchParams is now a Promise -- must be awaited before use.
+  searchParams: Promise<{ state?: string }>;
 }) {
-  const dispensaries = await getDispensaries(searchParams.state);
+  const resolvedSearchParams = await searchParams;
+  const dispensaries = await getDispensaries(resolvedSearchParams.state);
   const states = Array.from(new Set(dispensaries.map((d) => d.state))).sort();
 
   return (
@@ -47,7 +49,7 @@ export default async function DispensariesPage({
         <Link
           href="/dispensaries"
           className={`rounded-full border px-3 py-1 text-xs ${
-            !searchParams.state
+            !resolvedSearchParams.state
               ? 'border-canopy-green bg-canopy-green/15 text-canopy-green'
               : 'border-canopy-border text-canopy-muted'
           }`}
@@ -59,7 +61,7 @@ export default async function DispensariesPage({
             key={s}
             href={`/dispensaries?state=${s}`}
             className={`rounded-full border px-3 py-1 text-xs ${
-              searchParams.state === s
+              resolvedSearchParams.state === s
                 ? 'border-canopy-green bg-canopy-green/15 text-canopy-green'
                 : 'border-canopy-border text-canopy-muted'
             }`}

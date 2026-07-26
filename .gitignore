@@ -1,6 +1,7 @@
 node_modules
 .next
 .env.local
+tsconfig.tsbuildinfo
 Cannabis App.txt
 NEXT_PUBLIC_SUPABASE_URL.txt
 Ubuntu.txt

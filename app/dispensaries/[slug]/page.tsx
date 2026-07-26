@@ -50,8 +50,14 @@ async function getDispensary(slug: string) {
   };
 }
 
-export default async function DispensaryDetailPage({ params }: { params: { slug: string } }) {
-  const result = await getDispensary(params.slug);
+export default async function DispensaryDetailPage({
+  params,
+}: {
+  // Next.js 15: params is now a Promise -- must be awaited before use.
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const result = await getDispensary(slug);
   if (!result) notFound();
   const { dispensary, products, avgRating, reviewCount, deals } = result;
 

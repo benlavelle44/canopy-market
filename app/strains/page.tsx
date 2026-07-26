@@ -41,10 +41,12 @@ async function getAllNames() {
 export default async function StrainsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  // Next.js 15: searchParams is now a Promise -- must be awaited before use.
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const strains = await getStrains(searchParams);
-  const q = typeof searchParams.q === 'string' ? searchParams.q.trim() : '';
+  const resolvedSearchParams = await searchParams;
+  const strains = await getStrains(resolvedSearchParams);
+  const q = typeof resolvedSearchParams.q === 'string' ? resolvedSearchParams.q.trim() : '';
 
   let suggestions: { slug: string; name: string }[] = [];
   if (strains.length === 0 && q) {
