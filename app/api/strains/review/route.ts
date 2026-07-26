@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     const { data: strain } = await admin
       .from('strains')
-      .select('id, found_by_user_id, verification_status')
+      .select('id, name, slug, found_by_user_id, verification_status')
       .eq('id', strainId)
       .eq('verification_status', 'pending')
       .maybeSingle();
@@ -95,12 +95,29 @@ export async function POST(req: NextRequest) {
 
       if (strain.found_by_user_id) {
         await admin.rpc('increment_points', { target_user: strain.found_by_user_id, amount: POINTS_FOR_VERIFIED_FIND });
+        await admin.from('notifications').insert({
+          user_id: strain.found_by_user_id,
+          type: 'strain_verified',
+          title: `${strain.name} was verified!`,
+          body: `Your AI Strain Finder submission is now live and you earned ${POINTS_FOR_VERIFIED_FIND} points.`,
+          link: `/strains/${strain.slug}`,
+        });
       }
       return NextResponse.json({ ok: true, awardedPoints: strain.found_by_user_id ? POINTS_FOR_VERIFIED_FIND : 0 });
     }
 
     // reject -- a rejected AI find isn't worth keeping around in any state,
     // so it's removed outright rather than left as dead "rejected" rows.
+    // Notify first, while the row (and its name) still exists.
+    if (strain.found_by_user_id) {
+      await admin.from('notifications').insert({
+        user_id: strain.found_by_user_id,
+        type: 'strain_rejected',
+        title: `${strain.name} wasn't verified`,
+        body: "An admin reviewed your submission and it didn't get added to the catalog this time.",
+        link: null,
+      });
+    }
     const { error } = await admin.from('strains').delete().eq('id', strainId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     const { data: photo } = await admin
       .from('strain_photos')
-      .select('id, submitted_by, verification_status')
+      .select('id, submitted_by, verification_status, strains(name, slug)')
       .eq('id', photoId)
       .eq('verification_status', 'pending')
       .maybeSingle();
@@ -86,18 +86,34 @@ export async function POST(req: NextRequest) {
     if (!photo) {
       return NextResponse.json({ error: 'That photo is no longer pending review.' }, { status: 404 });
     }
+    const strainInfo = (photo as any).strains as { name: string; slug: string } | null;
 
     if (action === 'approve') {
       const { error } = await admin.from('strain_photos').update({ verification_status: 'verified' }).eq('id', photoId);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
       await admin.rpc('increment_points', { target_user: photo.submitted_by, amount: POINTS_FOR_VERIFIED_PHOTO });
+      await admin.from('notifications').insert({
+        user_id: photo.submitted_by,
+        type: 'photo_verified',
+        title: `Your grow photo${strainInfo ? ` of ${strainInfo.name}` : ''} was verified!`,
+        body: `It's now live on the strain page and you earned ${POINTS_FOR_VERIFIED_PHOTO} points.`,
+        link: strainInfo ? `/strains/${strainInfo.slug}` : null,
+      });
       return NextResponse.json({ ok: true, awardedPoints: POINTS_FOR_VERIFIED_PHOTO });
     }
 
     // reject -- pull the row; the underlying storage object is left in
     // place (cheap, and useful for a future abuse audit) but nothing ever
-    // links to it once the row is gone.
+    // links to it once the row is gone. Notify first, while we still have
+    // the strain name to reference.
+    await admin.from('notifications').insert({
+      user_id: photo.submitted_by,
+      type: 'photo_rejected',
+      title: `Your grow photo${strainInfo ? ` of ${strainInfo.name}` : ''} wasn't verified`,
+      body: "An admin reviewed it and it didn't get added to the strain page this time.",
+      link: null,
+    });
     const { error } = await admin.from('strain_photos').delete().eq('id', photoId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

@@ -83,10 +83,13 @@ export default function DispensaryReviewsSection({
 
   const submitReply = async (reviewId: string) => {
     if (!replyText.trim()) return;
-    await supabase
-      .from('dispensary_reviews')
-      .update({ owner_response: replyText.trim(), owner_response_at: new Date().toISOString() })
-      .eq('id', reviewId);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    await fetch('/api/dispensary-reviews/reply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ reviewId, response: replyText.trim() }),
+    });
     setReplyingTo(null);
     setReplyText('');
     load();

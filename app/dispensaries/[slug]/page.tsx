@@ -6,6 +6,7 @@ import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
 import StrainPhoto from '@/components/StrainPhoto';
 import FlipProductCard from '@/components/FlipProductCard';
 import DealCard from '@/components/DealCard';
+import ReserveButton from '@/components/ReserveButton';
 
 export const revalidate = 0;
 
@@ -215,15 +216,20 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
                       // Flips to the dispensary's own uploaded photo of this
                       // product when they've provided one -- otherwise this
                       // is just a plain (optionally strain-linked) card.
+                      // Reserve button lives outside the flip/link wrapper
+                      // entirely (own div, own key) so tapping it never also
+                      // triggers the card's navigation or photo flip.
                       return (
-                        <FlipProductCard
-                          key={p.id}
-                          imageUrl={p.image_url}
-                          photoCredit={dispensary.name}
-                          href={p.strains ? `/strains/${p.strains.slug}` : undefined}
-                        >
-                          {card}
-                        </FlipProductCard>
+                        <div key={p.id} className="space-y-1.5">
+                          <FlipProductCard
+                            imageUrl={p.image_url}
+                            photoCredit={dispensary.name}
+                            href={p.strains ? `/strains/${p.strains.slug}` : undefined}
+                          >
+                            {card}
+                          </FlipProductCard>
+                          {p.in_stock && <ReserveButton productId={p.id} productName={p.strains ? p.strains.name : p.name} />}
+                        </div>
                       );
                     })}
                   </div>

@@ -14,12 +14,16 @@ import {
   DealDiscountType,
   DEAL_DISCOUNT_LABELS,
   formatDealDiscount,
+  Reservation,
+  ReservationStatus,
+  RESERVATION_STATUS_LABELS,
 } from '@/lib/types';
 import DownloadCmfTemplateButton from '@/components/DownloadCmfTemplateButton';
 
 type OwnedDispensary = Dispensary & {
   products: Product[];
   deals: Deal[];
+  reservations: Reservation[];
 };
 
 const TIER_LABEL: Record<string, string> = {
@@ -62,14 +66,21 @@ export default function DashboardClient() {
     const dispList = disp || [];
     const withProducts: OwnedDispensary[] = [];
     for (const d of dispList) {
-      const [{ data: products }, { data: deals }] = await Promise.all([
+      const [{ data: products }, { data: deals }, { data: reservations }] = await Promise.all([
         supabase.from('products').select('*').eq('dispensary_id', d.id).order('category'),
         supabase.from('deals').select('*').eq('dispensary_id', d.id).order('created_at', { ascending: false }),
+        supabase
+          .from('reservations')
+          .select('*')
+          .eq('dispensary_id', d.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
       ]);
       withProducts.push({
         ...(d as Dispensary),
         products: (products || []) as any,
         deals: (deals || []) as Deal[],
+        reservations: (reservations || []) as Reservation[],
       });
     }
 
@@ -130,6 +141,22 @@ export default function DashboardClient() {
     await supabase.from('products').update(fields).eq('id', productId);
   };
 
+  // Routed through the server (instead of the same direct client update
+  // every other field uses) only because restocking needs to fan a
+  // notification out to everyone who favorited the strain -- writing to
+  // other users' rows isn't something the owner's own session can do.
+  const restockProduct = async (productId: string) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+    await fetch('/api/products/restock-alert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ productId }),
+    });
+    load();
+  };
+
   const removeProduct = async (productId: string) => {
     await supabase.from('products').delete().eq('id', productId);
     load();
@@ -156,6 +183,21 @@ export default function DashboardClient() {
 
   const removeDeal = async (dealId: string) => {
     await supabase.from('deals').delete().eq('id', dealId);
+    load();
+  };
+
+  // Routed through the server, same as restockProduct -- moving a
+  // reservation forward means notifying the *customer's* row, which the
+  // owner's own RLS-scoped session can't write to directly.
+  const updateReservationStatus = async (reservationId: string, status: ReservationStatus) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+    await fetch('/api/reservations/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ reservationId, status }),
+    });
     load();
   };
 
@@ -237,6 +279,8 @@ export default function DashboardClient() {
               onAddDeal={(fields) => addDeal(d.id, fields)}
               onUpdateDeal={updateDeal}
               onRemoveDeal={removeDeal}
+              onRestockProduct={restockProduct}
+              onUpdateReservationStatus={updateReservationStatus}
             />
           ))}
         </div>
@@ -259,6 +303,8 @@ function DispensaryPanel({
   onAddDeal,
   onUpdateDeal,
   onRemoveDeal,
+  onRestockProduct,
+  onUpdateReservationStatus,
 }: {
   dispensary: OwnedDispensary;
   allStrains: Strain[];
@@ -273,6 +319,8 @@ function DispensaryPanel({
   onAddDeal: (fields: Partial<Deal>) => void;
   onUpdateDeal: (dealId: string, fields: Partial<Deal>) => void;
   onRemoveDeal: (dealId: string) => void;
+  onRestockProduct: (productId: string) => void;
+  onUpdateReservationStatus: (reservationId: string, status: ReservationStatus) => void;
 }) {
   const [category, setCategory] = useState<ProductCategory>('flower');
   const [strainId, setStrainId] = useState('');
@@ -530,7 +578,9 @@ function DispensaryPanel({
                       <input
                         type="checkbox"
                         defaultChecked={p.in_stock}
-                        onChange={(e) => onUpdateProduct(p.id, { in_stock: e.target.checked })}
+                        onChange={(e) =>
+                          e.target.checked ? onRestockProduct(p.id) : onUpdateProduct(p.id, { in_stock: false })
+                        }
                       />
                       In stock
                     </label>
@@ -648,6 +698,99 @@ function DispensaryPanel({
             >
               Add to Menu
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Pickup Reservations -- the "ask to buy" flow customers trigger from
+          the storefront. No payment touches the platform; this is purely
+          the order-ahead intent + fulfillment lifecycle. */}
+      <div className="mt-8 rounded-2xl border border-canopy-border bg-canopy-bg p-5">
+        <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-canopy-muted">
+          Pickup Reservations
+          {dispensary.reservations.filter((r) => r.status === 'pending').length > 0 && (
+            <span className="ml-2 rounded-full bg-canopy-green/20 px-2 py-0.5 text-[11px] normal-case text-canopy-green">
+              {dispensary.reservations.filter((r) => r.status === 'pending').length} new
+            </span>
+          )}
+        </h3>
+        <p className="mb-4 text-xs text-canopy-muted">
+          Customers reserve items here for in-store pickup -- no payment happens online, so just confirm, mark ready,
+          and check them out in person like normal.
+        </p>
+
+        {dispensary.reservations.length === 0 ? (
+          <p className="text-xs text-canopy-muted">No reservations yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {dispensary.reservations.map((r) => {
+              const product = dispensary.products.find((p) => p.id === r.product_id);
+              return (
+                <div
+                  key={r.id}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-canopy-border bg-canopy-card px-3 py-2"
+                >
+                  <span className="flex-1 text-sm">
+                    <span className="font-medium">{product?.name || 'Item'}</span>
+                    <span className="ml-2 text-xs text-canopy-muted">×{r.quantity}</span>
+                    {r.note && <span className="ml-2 text-xs italic text-canopy-muted">"{r.note}"</span>}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      r.status === 'pending'
+                        ? 'bg-yellow-500/10 text-yellow-400'
+                        : r.status === 'cancelled'
+                          ? 'bg-red-500/10 text-red-400'
+                          : r.status === 'completed'
+                            ? 'bg-canopy-muted/10 text-canopy-muted'
+                            : 'bg-canopy-green/10 text-canopy-green'
+                    }`}
+                  >
+                    {RESERVATION_STATUS_LABELS[r.status]}
+                  </span>
+                  {r.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => onUpdateReservationStatus(r.id, 'confirmed')}
+                        className="text-xs text-canopy-green hover:underline"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => onUpdateReservationStatus(r.id, 'cancelled')}
+                        className="text-xs text-red-400 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  {r.status === 'confirmed' && (
+                    <>
+                      <button
+                        onClick={() => onUpdateReservationStatus(r.id, 'ready')}
+                        className="text-xs text-canopy-green hover:underline"
+                      >
+                        Mark ready
+                      </button>
+                      <button
+                        onClick={() => onUpdateReservationStatus(r.id, 'cancelled')}
+                        className="text-xs text-red-400 hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  {r.status === 'ready' && (
+                    <button
+                      onClick={() => onUpdateReservationStatus(r.id, 'completed')}
+                      className="text-xs text-canopy-green hover:underline"
+                    >
+                      Mark picked up
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

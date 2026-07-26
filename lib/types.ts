@@ -132,6 +132,27 @@ export interface Review {
   profiles?: { name: string | null } | null;
 }
 
+export type NotificationType =
+  | 'strain_verified'
+  | 'photo_verified'
+  | 'review_reply'
+  | 'strain_rejected'
+  | 'photo_rejected'
+  | 'back_in_stock'
+  | 'reservation_created'
+  | 'reservation_update';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType | string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read: boolean;
+  created_at: string;
+}
+
 export type DealDiscountType = 'percentage' | 'fixed' | 'bogo';
 
 export const DEAL_DISCOUNT_LABELS: Record<DealDiscountType, string> = {
@@ -199,6 +220,28 @@ export interface DispensaryReview {
   owner_response: string | null;
   owner_response_at: string | null;
   created_at: string;
+}
+
+export type ReservationStatus = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled';
+
+export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  ready: 'Ready for pickup',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+export interface Reservation {
+  id: string;
+  dispensary_id: string;
+  product_id: string;
+  user_id: string;
+  quantity: number;
+  note: string | null;
+  status: ReservationStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LeaderboardEntry {

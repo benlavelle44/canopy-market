@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function NavBar() {
   const [email, setEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -15,9 +17,11 @@ export default function NavBar() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setEmail(data.session?.user?.email ?? null);
+      setUserId(data.session?.user?.id ?? null);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setEmail(session?.user?.email ?? null);
+      setUserId(session?.user?.id ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -74,6 +78,7 @@ export default function NavBar() {
           </Link>
           {email ? (
             <>
+              {userId && <NotificationBell userId={userId} />}
               <Link href="/dashboard" className="text-sm text-canopy-muted hover:text-canopy-text">
                 My Dispensary
               </Link>
@@ -118,6 +123,12 @@ export default function NavBar() {
             </Link>
             {email ? (
               <>
+                {userId && (
+                  <div className="flex items-center gap-2 text-canopy-muted">
+                    <span>Notifications</span>
+                    <NotificationBell userId={userId} />
+                  </div>
+                )}
                 <Link href="/dashboard" className="text-canopy-muted">
                   My Dispensary
                 </Link>

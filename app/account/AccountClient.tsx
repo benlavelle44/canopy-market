@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
-import { Profile, Strain, Review, Dispensary } from '@/lib/types';
+import { Profile, Strain, Review, Dispensary, Reservation, RESERVATION_STATUS_LABELS } from '@/lib/types';
 import StrainCard from '@/components/StrainCard';
 
 // The consolidated customer dashboard -- everything a shopper (not a
@@ -16,6 +16,10 @@ import StrainCard from '@/components/StrainCard';
 // about the whole platform, not just you -- this page links out to it.
 
 type MyReview = Review & { strains: { name: string; slug: string } | null };
+type MyReservation = Reservation & {
+  products: { name: string } | null;
+  dispensaries: { name: string; slug: string } | null;
+};
 
 function AccountInner() {
   const supabase = createClient();
@@ -26,6 +30,7 @@ function AccountInner() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [favorites, setFavorites] = useState<Strain[]>([]);
   const [reviews, setReviews] = useState<MyReview[]>([]);
+  const [reservations, setReservations] = useState<MyReservation[]>([]);
   const [myDispensaries, setMyDispensaries] = useState<Dispensary[]>([]);
   const [notice, setNotice] = useState('');
   const [copied, setCopied] = useState(false);
@@ -43,22 +48,30 @@ function AccountInner() {
       }
       setUserId(user.id);
 
-      const [{ data: profileRow }, { data: favRows }, { data: reviewRows }, { data: dispRows }] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-        supabase.from('favorites').select('strains(*)').eq('user_id', user.id),
-        supabase
-          .from('reviews')
-          .select('*, strains(name, slug)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false }),
-        supabase.from('dispensaries').select('*').eq('owner_id', user.id),
-      ]);
+      const [{ data: profileRow }, { data: favRows }, { data: reviewRows }, { data: dispRows }, { data: reservationRows }] =
+        await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+          supabase.from('favorites').select('strains(*)').eq('user_id', user.id),
+          supabase
+            .from('reviews')
+            .select('*, strains(name, slug)')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false }),
+          supabase.from('dispensaries').select('*').eq('owner_id', user.id),
+          supabase
+            .from('reservations')
+            .select('*, products(name), dispensaries(name, slug)')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(20),
+        ]);
 
       setProfile((profileRow as Profile) || null);
       setCity((profileRow as Profile)?.city || '');
       setStateVal((profileRow as Profile)?.state || '');
       setFavorites(((favRows || []).map((r: any) => r.strains).filter(Boolean)) as Strain[]);
       setReviews((reviewRows || []) as MyReview[]);
+      setReservations((reservationRows || []) as MyReservation[]);
       setMyDispensaries((dispRows || []) as Dispensary[]);
       setLoading(false);
 
@@ -113,6 +126,7 @@ function AccountInner() {
     { href: '#overview', label: 'Overview' },
     { href: '#favorites', label: `Favorites (${favorites.length})` },
     { href: '#reviews', label: `Reviews (${reviews.length})` },
+    { href: '#reservations', label: `Reservations (${reservations.length})` },
     { href: '#referral', label: 'Referral & Community' },
     { href: '#settings', label: 'Settings' },
   ];
@@ -239,6 +253,57 @@ function AccountInner() {
                   {'☆'.repeat(5 - r.rating)}
                 </div>
                 {r.body && <p className="text-sm text-canopy-muted">{r.body}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Reservations -- the pickup-request lifecycle, mirrored from the
+          dispensary side. No payment ever happened here, so this is really
+          just a status tracker: pending → confirmed → ready → completed. */}
+      <section id="reservations" className="mb-10 scroll-mt-20">
+        <h2 className="mb-4 text-xl font-semibold">Your Reservations</h2>
+        {reservations.length === 0 ? (
+          <p className="text-sm text-canopy-muted">
+            No pickup reservations yet — look for "Reserve for pickup" on a dispensary's menu.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {reservations.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-canopy-border bg-canopy-card p-4"
+              >
+                <div className="flex-1">
+                  <p className="font-medium">
+                    {r.products?.name || 'Item'} <span className="text-xs text-canopy-muted">×{r.quantity}</span>
+                  </p>
+                  <p className="text-xs text-canopy-muted">
+                    {r.dispensaries ? (
+                      <Link href={`/dispensaries/${r.dispensaries.slug}`} className="hover:text-canopy-green">
+                        {r.dispensaries.name}
+                      </Link>
+                    ) : (
+                      'Dispensary'
+                    )}
+                    {' · '}
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    r.status === 'pending'
+                      ? 'bg-yellow-500/10 text-yellow-400'
+                      : r.status === 'cancelled'
+                        ? 'bg-red-500/10 text-red-400'
+                        : r.status === 'completed'
+                          ? 'bg-canopy-muted/10 text-canopy-muted'
+                          : 'bg-canopy-green/10 text-canopy-green'
+                  }`}
+                >
+                  {RESERVATION_STATUS_LABELS[r.status]}
+                </span>
               </div>
             ))}
           </div>
