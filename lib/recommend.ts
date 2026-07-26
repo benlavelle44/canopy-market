@@ -69,6 +69,34 @@ export function heuristicRecommend(message: string, strains: Strain[], limit = 4
   return top.map((x) => x.s);
 }
 
+// A short, skimmable "why this one" line per tile -- the assistant used to
+// just dump spec-sheet cards with no explanation attached to any single
+// result. Built from whichever aliases in the user's own message actually
+// matched this specific strain, so it reads as a real reason rather than
+// boilerplate.
+export function reasonForMatch(strain: Strain, message: string): string {
+  const text = message.toLowerCase();
+  const matchedEffects = strain.effects.filter((e) =>
+    (EFFECT_ALIASES[e] || [e.toLowerCase()]).some((a) => text.includes(a))
+  );
+  const matchedSymptoms = strain.symptoms.filter((s) =>
+    (SYMPTOM_ALIASES[s] || [s.toLowerCase()]).some((a) => text.includes(a))
+  );
+
+  const bits: string[] = [];
+  if (matchedEffects.length > 0) bits.push(matchedEffects.slice(0, 2).join(' + '));
+  if (matchedSymptoms.length > 0) bits.push(`eases ${matchedSymptoms.slice(0, 2).join(', ').toLowerCase()}`);
+  if (/\bindica\b/.test(text) && strain.type === 'Indica') bits.push('Indica, as asked');
+  if (/\bsativa\b/.test(text) && strain.type === 'Sativa') bits.push('Sativa, as asked');
+  if (/\bhybrid\b/.test(text) && strain.type === 'Hybrid') bits.push('Hybrid, as asked');
+  if (/\bcbd\b|non.?intoxicating/.test(text) && strain.cbd >= 5) bits.push(`CBD ${strain.cbd}%`);
+  if (/\bstrong\b|potent|high thc/.test(text) && strain.thc >= 22) bits.push(`potent, THC ${strain.thc}%`);
+  if (/\bmild\b|low thc|beginner/.test(text) && strain.thc <= 15) bits.push('gentler, lower THC');
+
+  if (bits.length === 0) return `Highly rated ${strain.type.toLowerCase()} overall`;
+  return bits.slice(0, 2).join(' · ');
+}
+
 // Terpene-profile similarity -- used on strain detail pages to surface
 // strains with a similar "feel" by chemistry rather than just a shared
 // Indica/Sativa/Hybrid label, including strains from anywhere in the

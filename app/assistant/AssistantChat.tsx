@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import TypeBadge from '@/components/TypeBadge';
+import { createClient } from '@/lib/supabaseClient';
 import { Strain } from '@/lib/types';
 
 interface Availability {
@@ -21,6 +22,8 @@ interface Message {
   strains?: Strain[];
   availability?: Record<string, Availability[]>;
   poweredBy?: 'ai' | 'heuristic';
+  reasons?: Record<string, string>;
+  personalized?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -31,6 +34,7 @@ const SUGGESTIONS = [
 ];
 
 export default function AssistantChat() {
+  const supabase = createClient();
   const params = useSearchParams();
   const initialQuery = params.get('q') || '';
   const [messages, setMessages] = useState<Message[]>([
@@ -55,9 +59,14 @@ export default function AssistantChat() {
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
       const res = await fetch('/api/assistant', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ message: text, history }),
       });
       const data = await res.json();
@@ -72,6 +81,8 @@ export default function AssistantChat() {
           strains: data.strains,
           availability: data.availability,
           poweredBy: data.poweredBy,
+          reasons: data.reasons,
+          personalized: data.personalized,
         },
       ]);
     } catch (e) {
@@ -113,6 +124,9 @@ export default function AssistantChat() {
               }`}
             >
               <p className="whitespace-pre-wrap">{m.content}</p>
+              {m.personalized && (
+                <p className="mt-1 text-[11px] text-canopy-green">✨ Tuned to your past ratings</p>
+              )}
 
               {m.strains && m.strains.length > 0 && (
                 <div className="mt-3 space-y-2">
@@ -127,6 +141,9 @@ export default function AssistantChat() {
                       <p className="mt-1 text-xs text-canopy-muted">
                         THC {s.thc}% · CBD {s.cbd}% · {s.effects.slice(0, 3).join(', ')}
                       </p>
+                      {m.reasons?.[s.slug] && (
+                        <p className="mt-1 text-[11px] italic text-canopy-green">→ {m.reasons[s.slug]}</p>
+                      )}
                       {m.availability?.[s.slug] && m.availability[s.slug].length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {m.availability[s.slug].slice(0, 3).map((a) => (
