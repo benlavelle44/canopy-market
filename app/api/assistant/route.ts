@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { heuristicRecommend, heuristicReply, reasonForMatch } from '@/lib/recommend';
+import { extractTrailingJson, extractAllText } from '@/lib/extractJson';
 import { Strain } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -102,19 +103,29 @@ Pick 2-4 of the most relevant strains by slug from the catalog above. Every reco
   }
 
   const data = await res.json();
-  const text = data?.content?.[0]?.text || '';
+  // Claude's content array isn't guaranteed to be a single text block --
+  // concatenating every text block (rather than blindly indexing [0]) and
+  // then scanning for the JSON span (rather than assuming the whole string
+  // is pure JSON) avoids silently degrading to an empty reply whenever
+  // Claude prefaces its answer with any reasoning text.
+  const text = extractAllText(data?.content);
   try {
-    const cleaned = text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
-    const parsed = JSON.parse(cleaned);
+    const parsed = extractTrailingJson(text);
     const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 4) : [];
+    if (!parsed.reply || recs.length === 0) {
+      // Incomplete JSON (missing reply or no picks) isn't worth showing --
+      // returning null lets the caller fall through to the heuristic path,
+      // which always produces a real reply instead of a blank/partial one.
+      return null;
+    }
     return {
-      reply: String(parsed.reply || ''),
+      reply: String(parsed.reply),
       slugs: recs.map((r: any) => String(r.slug)),
       reasons: Object.fromEntries(recs.map((r: any) => [String(r.slug), String(r.reason || '')])),
     };
   } catch (e) {
     console.error('Failed to parse Claude response', e, text);
-    return { reply: text.slice(0, 600), slugs: [], reasons: {} };
+    return null;
   }
 }
 
