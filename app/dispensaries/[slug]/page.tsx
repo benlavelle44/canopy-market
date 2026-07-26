@@ -1,10 +1,11 @@
 import { notFound } from 'next/navigation';
 import { createServerReadClient } from '@/lib/supabaseServer';
-import { Dispensary, Product, Strain, PRODUCT_CATEGORIES } from '@/lib/types';
+import { Dispensary, Product, Strain, Deal, PRODUCT_CATEGORIES } from '@/lib/types';
 import TypeBadge from '@/components/TypeBadge';
 import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
 import StrainPhoto from '@/components/StrainPhoto';
 import FlipProductCard from '@/components/FlipProductCard';
+import DealCard from '@/components/DealCard';
 
 export const revalidate = 0;
 
@@ -19,26 +20,39 @@ async function getDispensary(slug: string) {
     .maybeSingle();
   if (!dispensary) return null;
 
-  const [{ data: products }, { data: reviews }] = await Promise.all([
+  const [{ data: products }, { data: reviews }, { data: deals }] = await Promise.all([
     supabase.from('products').select('*, strains(*)').eq('dispensary_id', dispensary.id).order('category'),
     supabase.from('dispensary_reviews').select('rating').eq('dispensary_id', dispensary.id),
+    supabase
+      .from('deals')
+      .select('*')
+      .eq('dispensary_id', dispensary.id)
+      .eq('active', true)
+      .order('created_at', { ascending: false }),
   ]);
 
   const reviewCount = (reviews || []).length;
   const avgRating = reviewCount > 0 ? (reviews as any[]).reduce((s, r) => s + r.rating, 0) / reviewCount : 0;
+
+  // Active + not yet expired -- "active" alone isn't enough since a deal
+  // with a past ends_at should quietly stop showing without the owner
+  // having to remember to flip it off.
+  const now = Date.now();
+  const liveDeals = ((deals || []) as Deal[]).filter((d) => !d.ends_at || new Date(d.ends_at).getTime() >= now);
 
   return {
     dispensary: dispensary as Dispensary,
     products: (products || []) as (Product & { strains: Strain | null })[],
     avgRating,
     reviewCount,
+    deals: liveDeals,
   };
 }
 
 export default async function DispensaryDetailPage({ params }: { params: { slug: string } }) {
   const result = await getDispensary(params.slug);
   if (!result) notFound();
-  const { dispensary, products, avgRating, reviewCount } = result;
+  const { dispensary, products, avgRating, reviewCount, deals } = result;
 
   const byCategory = PRODUCT_CATEGORIES.map((c) => ({
     ...c,
@@ -122,6 +136,19 @@ export default async function DispensaryDetailPage({ params }: { params: { slug:
       </div>
 
       {dispensary.description && <p className="mt-5 max-w-2xl text-canopy-text">{dispensary.description}</p>}
+
+      {deals.length > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-canopy-muted">
+            🔥 Active Deals
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {deals.map((d) => (
+              <DealCard key={d.id} deal={d} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-8 grid gap-8 md:grid-cols-[1fr_280px]">
         <section>

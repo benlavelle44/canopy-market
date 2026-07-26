@@ -26,6 +26,7 @@ export default function NavBar() {
 
   const links = [
     { href: '/shop', label: 'Shop' },
+    { href: '/deals', label: 'Deals' },
     { href: '/strains', label: 'Strains' },
     { href: '/dispensaries', label: 'Dispensaries' },
     { href: '/assistant', label: 'AI Budtender' },

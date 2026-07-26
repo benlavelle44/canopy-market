@@ -4,11 +4,22 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabaseClient';
-import { Dispensary, Product, ProductCategory, PRODUCT_CATEGORIES, Strain } from '@/lib/types';
+import {
+  Dispensary,
+  Product,
+  ProductCategory,
+  PRODUCT_CATEGORIES,
+  Strain,
+  Deal,
+  DealDiscountType,
+  DEAL_DISCOUNT_LABELS,
+  formatDealDiscount,
+} from '@/lib/types';
 import DownloadCmfTemplateButton from '@/components/DownloadCmfTemplateButton';
 
 type OwnedDispensary = Dispensary & {
   products: Product[];
+  deals: Deal[];
 };
 
 const TIER_LABEL: Record<string, string> = {
@@ -51,12 +62,15 @@ export default function DashboardClient() {
     const dispList = disp || [];
     const withProducts: OwnedDispensary[] = [];
     for (const d of dispList) {
-      const { data: products } = await supabase
-        .from('products')
-        .select('*')
-        .eq('dispensary_id', d.id)
-        .order('category');
-      withProducts.push({ ...(d as Dispensary), products: (products || []) as any });
+      const [{ data: products }, { data: deals }] = await Promise.all([
+        supabase.from('products').select('*').eq('dispensary_id', d.id).order('category'),
+        supabase.from('deals').select('*').eq('dispensary_id', d.id).order('created_at', { ascending: false }),
+      ]);
+      withProducts.push({
+        ...(d as Dispensary),
+        products: (products || []) as any,
+        deals: (deals || []) as Deal[],
+      });
     }
 
     setDispensaries(withProducts);
@@ -118,6 +132,30 @@ export default function DashboardClient() {
 
   const removeProduct = async (productId: string) => {
     await supabase.from('products').delete().eq('id', productId);
+    load();
+  };
+
+  const addDeal = async (dispensaryId: string, fields: Partial<Deal>) => {
+    if (!fields.title) return;
+    await supabase.from('deals').insert({
+      dispensary_id: dispensaryId,
+      title: fields.title,
+      description: fields.description || null,
+      category: fields.category || null,
+      discount_type: fields.discount_type || 'percentage',
+      discount_value: fields.discount_value ?? null,
+      ends_at: fields.ends_at || null,
+    });
+    load();
+  };
+
+  const updateDeal = async (dealId: string, fields: Partial<Deal>) => {
+    await supabase.from('deals').update(fields).eq('id', dealId);
+    load();
+  };
+
+  const removeDeal = async (dealId: string) => {
+    await supabase.from('deals').delete().eq('id', dealId);
     load();
   };
 
@@ -196,6 +234,9 @@ export default function DashboardClient() {
               onRemoveProduct={removeProduct}
               onUpgrade={(tier) => upgrade(d.id, tier)}
               onImportMenu={(csv) => importMenu(d.id, csv)}
+              onAddDeal={(fields) => addDeal(d.id, fields)}
+              onUpdateDeal={updateDeal}
+              onRemoveDeal={removeDeal}
             />
           ))}
         </div>
@@ -215,6 +256,9 @@ function DispensaryPanel({
   onRemoveProduct,
   onUpgrade,
   onImportMenu,
+  onAddDeal,
+  onUpdateDeal,
+  onRemoveDeal,
 }: {
   dispensary: OwnedDispensary;
   allStrains: Strain[];
@@ -226,6 +270,9 @@ function DispensaryPanel({
   onRemoveProduct: (productId: string) => void;
   onUpgrade: (tier: 'pro' | 'verified') => void;
   onImportMenu: (csv: string) => Promise<any>;
+  onAddDeal: (fields: Partial<Deal>) => void;
+  onUpdateDeal: (dealId: string, fields: Partial<Deal>) => void;
+  onRemoveDeal: (dealId: string) => void;
 }) {
   const [category, setCategory] = useState<ProductCategory>('flower');
   const [strainId, setStrainId] = useState('');
@@ -236,6 +283,11 @@ function DispensaryPanel({
   const [cbd, setCbd] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  const [dealTitle, setDealTitle] = useState('');
+  const [dealCategory, setDealCategory] = useState('');
+  const [dealType, setDealType] = useState<DealDiscountType>('percentage');
+  const [dealValue, setDealValue] = useState('');
+  const [dealEndsAt, setDealEndsAt] = useState('');
 
   const handleImportFile = async (file: File) => {
     setImporting(true);
@@ -287,6 +339,22 @@ function DispensaryPanel({
       });
     }
     resetForm();
+  };
+
+  const handleAddDeal = () => {
+    if (!dealTitle.trim()) return;
+    onAddDeal({
+      title: dealTitle,
+      category: (dealCategory || null) as ProductCategory | null,
+      discount_type: dealType,
+      discount_value: dealType === 'bogo' ? null : dealValue ? Number(dealValue) : null,
+      ends_at: dealEndsAt ? new Date(dealEndsAt).toISOString() : null,
+    });
+    setDealTitle('');
+    setDealCategory('');
+    setDealType('percentage');
+    setDealValue('');
+    setDealEndsAt('');
   };
 
   return (
@@ -582,6 +650,113 @@ function DispensaryPanel({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Deals & Promotions -- the "reason to check back today" feature.
+          Shows on the public storefront and the platform-wide /deals hub
+          the moment it's saved active, no approval step needed. */}
+      <div className="mt-8 rounded-2xl border border-canopy-border bg-canopy-bg p-5">
+        <h3 className="mb-1 text-sm font-semibold uppercase tracking-wide text-canopy-muted">
+          Deals &amp; Promotions ({dispensary.deals.filter((d) => d.active).length} active)
+        </h3>
+        <p className="mb-4 text-xs text-canopy-muted">
+          Active deals show on your storefront and the platform-wide Deals page -- a reason for shoppers to check
+          back.
+        </p>
+
+        {dispensary.deals.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {dispensary.deals.map((d) => (
+              <div
+                key={d.id}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-canopy-border bg-canopy-card px-3 py-2"
+              >
+                <span className="flex-1 text-sm font-medium">
+                  {d.title}
+                  <span className="ml-2 text-xs text-canopy-green">{formatDealDiscount(d)}</span>
+                  {d.category && (
+                    <span className="ml-2 text-xs text-canopy-muted">
+                      {CATEGORY_LABEL[d.category] || d.category} only
+                    </span>
+                  )}
+                </span>
+                {d.ends_at && (
+                  <span className="text-[11px] text-canopy-muted">
+                    ends {new Date(d.ends_at).toLocaleDateString()}
+                  </span>
+                )}
+                <label className="flex items-center gap-1 text-xs text-canopy-muted">
+                  <input
+                    type="checkbox"
+                    defaultChecked={d.active}
+                    onChange={(e) => onUpdateDeal(d.id, { active: e.target.checked })}
+                  />
+                  Active
+                </label>
+                <button onClick={() => onRemoveDeal(d.id)} className="text-xs text-red-400 hover:underline">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            value={dealTitle}
+            onChange={(e) => setDealTitle(e.target.value)}
+            placeholder="Deal title (e.g. Wax Wednesday)"
+            className="rounded-xl border border-canopy-border bg-canopy-card px-3 py-2 text-sm sm:col-span-2"
+          />
+          <select
+            value={dealCategory}
+            onChange={(e) => setDealCategory(e.target.value)}
+            className="rounded-xl border border-canopy-border bg-canopy-card px-3 py-2 text-sm"
+          >
+            <option value="">Storewide (all categories)</option>
+            {PRODUCT_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label} only
+              </option>
+            ))}
+          </select>
+          <select
+            value={dealType}
+            onChange={(e) => setDealType(e.target.value as DealDiscountType)}
+            className="rounded-xl border border-canopy-border bg-canopy-card px-3 py-2 text-sm"
+          >
+            {Object.entries(DEAL_DISCOUNT_LABELS).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {dealType !== 'bogo' && (
+            <input
+              type="number"
+              value={dealValue}
+              onChange={(e) => setDealValue(e.target.value)}
+              placeholder={dealType === 'percentage' ? 'e.g. 20' : 'e.g. 10'}
+              className="rounded-xl border border-canopy-border bg-canopy-card px-3 py-2 text-sm"
+            />
+          )}
+          <div>
+            <label className="mb-1 block text-[11px] text-canopy-muted">Ends (optional)</label>
+            <input
+              type="date"
+              value={dealEndsAt}
+              onChange={(e) => setDealEndsAt(e.target.value)}
+              className="w-full rounded-xl border border-canopy-border bg-canopy-card px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            onClick={handleAddDeal}
+            disabled={!dealTitle.trim()}
+            className="rounded-full bg-canopy-green px-4 py-2 text-xs font-semibold text-black disabled:opacity-40 sm:col-span-2"
+          >
+            + Add Deal
+          </button>
+        </div>
       </div>
 
       <DemandInsights dispensaryId={dispensary.id} tier={dispensary.tier || 'free'} onUpgrade={() => onUpgrade('pro')} />

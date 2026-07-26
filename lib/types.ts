@@ -132,6 +132,34 @@ export interface Review {
   profiles?: { name: string | null } | null;
 }
 
+export type DealDiscountType = 'percentage' | 'fixed' | 'bogo';
+
+export const DEAL_DISCOUNT_LABELS: Record<DealDiscountType, string> = {
+  percentage: '% off',
+  fixed: '$ off',
+  bogo: 'BOGO',
+};
+
+export interface Deal {
+  id: string;
+  dispensary_id: string;
+  title: string;
+  description: string | null;
+  category: ProductCategory | null;
+  discount_type: DealDiscountType;
+  discount_value: number | null;
+  starts_at: string;
+  ends_at: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export function formatDealDiscount(deal: Pick<Deal, 'discount_type' | 'discount_value'>): string {
+  if (deal.discount_type === 'bogo') return 'BOGO';
+  if (deal.discount_type === 'percentage') return `${deal.discount_value ?? 0}% off`;
+  return `$${deal.discount_value ?? 0} off`;
+}
+
 export type GrowStage = 'seedling' | 'vegetative' | 'flowering' | 'pre-harvest' | 'harvested';
 
 export const GROW_STAGES: { id: GrowStage; label: string }[] = [
