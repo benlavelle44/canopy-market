@@ -19,6 +19,17 @@ import {
   RESERVATION_STATUS_LABELS,
 } from '@/lib/types';
 import DownloadCmfTemplateButton from '@/components/DownloadCmfTemplateButton';
+import ImageUploadField from '@/components/ImageUploadField';
+
+const DAY_ORDER: { id: string; label: string }[] = [
+  { id: 'sunday', label: 'Sunday' },
+  { id: 'monday', label: 'Monday' },
+  { id: 'tuesday', label: 'Tuesday' },
+  { id: 'wednesday', label: 'Wednesday' },
+  { id: 'thursday', label: 'Thursday' },
+  { id: 'friday', label: 'Friday' },
+  { id: 'saturday', label: 'Saturday' },
+];
 
 type OwnedDispensary = Dispensary & {
   products: Product[];
@@ -113,11 +124,20 @@ export default function DashboardClient() {
         city: d.city,
         state: d.state,
         zip: d.zip,
+        hours: d.hours,
       })
       .eq('id', d.id);
     setSavingId(null);
     setNotice('Saved.');
     setTimeout(() => setNotice(''), 2000);
+  };
+
+  // Logo/banner uploads save themselves the instant the file finishes
+  // uploading -- no reason to make an owner also hit the big "Save Info"
+  // button just to keep a photo they already picked.
+  const saveImageField = async (dispensaryId: string, field: 'logo_url' | 'banner_url', url: string) => {
+    await supabase.from('dispensaries').update({ [field]: url }).eq('id', dispensaryId);
+    updateDispensaryField(dispensaryId, field, url);
   };
 
   const addProduct = async (dispensaryId: string, fields: Partial<Product>) => {
@@ -289,6 +309,7 @@ export default function DashboardClient() {
               onRemoveDeal={removeDeal}
               onRestockProduct={restockProduct}
               onUpdateReservationStatus={updateReservationStatus}
+              onUploadImage={(field, url) => saveImageField(d.id, field, url)}
             />
           ))}
         </div>
@@ -313,6 +334,7 @@ function DispensaryPanel({
   onRemoveDeal,
   onRestockProduct,
   onUpdateReservationStatus,
+  onUploadImage,
 }: {
   dispensary: OwnedDispensary;
   allStrains: Strain[];
@@ -329,6 +351,7 @@ function DispensaryPanel({
   onRemoveDeal: (dealId: string) => void;
   onRestockProduct: (productId: string) => void;
   onUpdateReservationStatus: (reservationId: string, status: ReservationStatus) => void;
+  onUploadImage: (field: 'logo_url' | 'banner_url', url: string) => void;
 }) {
   const [category, setCategory] = useState<ProductCategory>('flower');
   const [strainId, setStrainId] = useState('');
@@ -450,6 +473,34 @@ function DispensaryPanel({
         )}
       </div>
 
+      {/* Storefront Profile -- cover photo + profile picture, the same
+          mental model as setting up a Facebook Business Page. This is the
+          one place an owner sets what shoppers actually see first; uploads
+          save themselves instantly, no separate step required. */}
+      <div className="mb-6 rounded-2xl border border-canopy-border bg-canopy-bg p-5">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-canopy-muted">
+          Storefront Profile
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ImageUploadField
+            label="Cover photo (banner)"
+            currentUrl={dispensary.banner_url}
+            dispensaryId={dispensary.id}
+            kind="banner"
+            shape="wide"
+            onUploaded={(url) => onUploadImage('banner_url', url)}
+          />
+          <ImageUploadField
+            label="Profile picture (logo)"
+            currentUrl={dispensary.logo_url}
+            dispensaryId={dispensary.id}
+            kind="logo"
+            shape="square"
+            onUploaded={(url) => onUploadImage('logo_url', url)}
+          />
+        </div>
+      </div>
+
       {/* Business info */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <textarea
@@ -490,6 +541,27 @@ function DispensaryPanel({
           className="rounded-xl border border-canopy-border bg-canopy-bg px-3 py-2 text-sm focus:border-canopy-green focus:outline-none"
         />
       </div>
+
+      {/* Store hours */}
+      <div className="mb-6">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-canopy-muted">Store Hours</h3>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {DAY_ORDER.map((d) => (
+            <div key={d.id} className="flex items-center gap-2">
+              <span className="w-20 flex-shrink-0 text-xs text-canopy-muted">{d.label}</span>
+              <input
+                value={dispensary.hours?.[d.id] || ''}
+                onChange={(e) =>
+                  onFieldChange('hours', { ...(dispensary.hours || {}), [d.id]: e.target.value })
+                }
+                placeholder="9am–9pm or Closed"
+                className="flex-1 rounded-xl border border-canopy-border bg-canopy-bg px-3 py-1.5 text-xs focus:border-canopy-green focus:outline-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
       <button
         onClick={onSave}
         disabled={saving}
@@ -910,7 +982,7 @@ function DispensaryPanel({
         </div>
       </div>
 
-      <DemandInsights dispensaryId={dispensary.id} tier={dispensary.tier || 'free'} onUpgrade={() => onUpgrade('pro')} />
+      <DemandInsights dispensaryId={dispensary.id} tier={dispensary.tier || 'free'} onUpgrade={() => onUpgrade('verified')} />
     </div>
   );
 }
@@ -980,7 +1052,7 @@ function DemandInsights({
       <div className="mb-1 flex items-center gap-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-canopy-text">Local Demand Insights</h3>
         <span className="rounded-full border border-canopy-purple/40 bg-canopy-purple/10 px-2 py-0.5 text-[10px] font-medium text-canopy-purple">
-          Pro / Verified
+          Verified
         </span>
       </div>
       <p className="mb-4 text-xs text-canopy-muted">
@@ -996,14 +1068,14 @@ function DemandInsights({
         <div className="rounded-xl border border-canopy-border bg-canopy-card p-4">
           <p className="mb-2 text-sm text-canopy-text">
             {data.favoriteSignalCount ?? 0} strain favorites logged so far
-            {data.platformWide ? ' across Canopy' : ' in your area'} — upgrade to Pro to see exactly
-            which strains, sorted by demand, that you don't carry yet.
+            {data.platformWide ? ' across Canopy' : ' in your area'} — upgrade to Verified to see
+            exactly which strains, sorted by demand, that you don't carry yet.
           </p>
           <button
             onClick={onUpgrade}
             className="rounded-full bg-canopy-green px-4 py-2 text-xs font-semibold text-black"
           >
-            Unlock with Pro
+            Unlock with Verified
           </button>
         </div>
       ) : (

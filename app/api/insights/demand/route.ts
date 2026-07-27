@@ -10,9 +10,10 @@ export const runtime = 'nodejs';
 // members have voluntarily shared their location) into "what to stock"
 // signals for dispensary owners. This route NEVER returns individual user
 // identities -- only counts, averages, and strain-level aggregates. Only
-// the dispensary's own owner can request its insights, and only Pro /
-// Verified tier dispensaries get the full breakdown (Free tier gets a
-// locked teaser) -- this is a paid-tier feature.
+// the dispensary's own owner can request its insights, and only Verified
+// tier dispensaries get the full breakdown (Free and Pro both get a locked
+// teaser) -- this is the flagship perk that justifies Verified's price gap
+// over Pro.
 
 const MIN_LOCAL_SAMPLE = 5;
 
@@ -164,8 +165,9 @@ export async function POST(req: NextRequest) {
     const sampleSize = profileIds.length;
     const safeIds = profileIds.length ? profileIds : ['00000000-0000-0000-0000-000000000000'];
 
-    if (tier === 'free') {
+    if (tier !== 'verified') {
       // Teaser only -- no strain-level detail, just proof there's signal.
+      // Applies to both Free and Pro now; full insights are Verified-only.
       const { data: favTeaser } = await admin
         .from('favorites')
         .select('strain_id')

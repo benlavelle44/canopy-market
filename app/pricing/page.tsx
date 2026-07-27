@@ -27,7 +27,6 @@ const DISPENSARY_TIERS = [
     features: [
       'Everything in Free',
       'Unlimited menu items — flower, prerolls, dabs, vapes, edibles, tinctures, topicals, accessories',
-      'Local Demand Insights — see what strains/products your area actually wants (anonymized, aggregated)',
       'Priority placement in search & AI results',
       'Storefront analytics (views, top searches)',
       'Featured badge',
@@ -42,6 +41,7 @@ const DISPENSARY_TIERS = [
     tagline: 'Maximum trust and visibility.',
     features: [
       'Everything in Pro',
+      'Local Demand Insights — see what strains/products your area actually wants (anonymized, aggregated)',
       'License-verified badge',
       'Top placement above Pro listings',
       'Homepage feature rotation',
@@ -123,9 +123,9 @@ export default function PricingPage() {
             </div>
             <ul className="mt-6 space-y-2 text-sm text-canopy-muted">
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Everything in Free</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Unlimited saved favorites & AI chat history</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Personalized recommendation profile</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Verified reviewer badge on the leaderboard</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Unlimited saved favorites (Free caps at 10)</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>AI budtender remembers your past ratings and steers recommendations toward what you actually liked</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Canopy+ Member badge on the community leaderboard</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>+10 bonus points to start</span></li>
             </ul>
             {notice && <p className="mt-3 text-xs text-red-400">{notice}</p>}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServerReadClient } from '@/lib/supabaseServer';
+import { createAdminClient } from '@/lib/supabaseAdmin';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { heuristicRecommend, heuristicReply, reasonForMatch } from '@/lib/recommend';
 import { extractTrailingJson, extractAllText } from '@/lib/extractJson';
@@ -144,27 +145,38 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
     const strains = (strainRows || []).map(mapRow);
 
-    // Best-effort personalization: if this caller is signed in, pull their
-    // own past strain ratings so results can lean toward what they've liked
-    // and steer around what they've rated poorly, instead of treating every
-    // request as a first-time stranger.
+    // Personalized recommendations are a Canopy+ perk (see /pricing) -- a
+    // signed-in free user still gets a great answer, just not one that
+    // references their own rating history. Gating here is what actually
+    // makes free vs. Canopy+ feel different, instead of the promised perk
+    // silently applying to everyone regardless of membership.
     const user = await getUserFromRequest(req);
     let historyDigest: string | null = null;
     let dislikedStrainIds = new Set<string>();
     if (user) {
-      const { data: pastReviews } = await supabase
-        .from('reviews')
-        .select('rating, strains(id, name)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(15);
-      const rows = (pastReviews || []) as any[];
-      if (rows.length > 0) {
-        historyDigest = rows
-          .filter((r) => r.strains)
-          .map((r) => `${r.strains.name} ${r.rating}★`)
-          .join(', ');
-        dislikedStrainIds = new Set(rows.filter((r) => r.strains && r.rating <= 2).map((r) => r.strains.id));
+      // profiles is RLS-locked to each user's own row via auth.uid(), which
+      // this plain anon-key server client has no session for -- only the
+      // admin client can actually read it here.
+      const admin = createAdminClient();
+      const { data: profile } = admin
+        ? await admin.from('profiles').select('member_tier').eq('id', user.id).maybeSingle()
+        : { data: null };
+      const isPlus = (profile as any)?.member_tier === 'plus';
+      if (isPlus) {
+        const { data: pastReviews } = await supabase
+          .from('reviews')
+          .select('rating, strains(id, name)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(15);
+        const rows = (pastReviews || []) as any[];
+        if (rows.length > 0) {
+          historyDigest = rows
+            .filter((r) => r.strains)
+            .map((r) => `${r.strains.name} ${r.rating}★`)
+            .join(', ');
+          dislikedStrainIds = new Set(rows.filter((r) => r.strains && r.rating <= 2).map((r) => r.strains.id));
+        }
       }
     }
 
