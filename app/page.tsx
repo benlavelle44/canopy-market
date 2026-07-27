@@ -8,24 +8,32 @@ export const revalidate = 0;
 
 async function getData() {
   const supabase = createServerReadClient();
-  const [{ data: featured }, { data: dispensaries }, { count: strainCount }, { count: dispCount }] =
+  const [{ data: featured }, { data: dispensaries }, { count: strainCount }, { count: dispCount }, { data: stateRows }] =
     await Promise.all([
       supabase.from('strains').select('*').eq('featured', true).limit(6),
       supabase.from('dispensaries').select('*').eq('status', 'approved').limit(3),
       supabase.from('strains').select('*', { count: 'exact', head: true }),
       supabase.from('dispensaries').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+      supabase.from('dispensaries').select('state').eq('status', 'approved'),
     ]);
+
+  // The hero used to hardcode "Montana's home for..." regardless of what
+  // was actually listed -- this platform is multi-state (AZ/CA/CO/IL/MI/
+  // MT/NY as of writing), so the badge/count below are computed live
+  // instead of claiming a single-state footprint that isn't true.
+  const stateCount = new Set((stateRows || []).map((d: any) => d.state)).size;
 
   return {
     featured: (featured || []) as Strain[],
     dispensaries: (dispensaries || []) as Dispensary[],
     strainCount: strainCount || 0,
     dispCount: dispCount || 0,
+    stateCount,
   };
 }
 
 export default async function HomePage() {
-  const { featured, dispensaries, strainCount, dispCount } = await getData();
+  const { featured, dispensaries, strainCount, dispCount, stateCount } = await getData();
 
   return (
     <div>
@@ -33,10 +41,10 @@ export default async function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-br from-canopy-green/10 via-transparent to-canopy-purple/10" />
         <div className="relative mx-auto max-w-6xl px-4 py-20 text-center">
           <span className="mb-4 inline-block rounded-full border border-canopy-border bg-canopy-card px-4 py-1 text-xs font-medium text-canopy-muted">
-            🏔️ Built and rooted in Montana
+            🏔️ Started in Montana{stateCount > 1 ? ` — now in ${stateCount} states` : ''}
           </span>
           <h1 className="mx-auto max-w-3xl font-groovy text-4xl leading-tight md:text-6xl">
-            Montana's home for{' '}
+            Your home for{' '}
             <span className="text-gradient-trippy">flower, dabs, edibles & education.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-canopy-muted">
@@ -63,6 +71,9 @@ export default async function HomePage() {
             </div>
             <div>
               <span className="text-xl font-bold text-canopy-text">{dispCount}+</span> dispensaries
+            </div>
+            <div>
+              <span className="text-xl font-bold text-canopy-text">{stateCount}</span> states
             </div>
             <div>
               <span className="text-xl font-bold text-canopy-text">24/7</span> AI matching

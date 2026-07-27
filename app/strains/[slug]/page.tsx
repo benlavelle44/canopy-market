@@ -1,9 +1,12 @@
+import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { Strain, Dispensary, Product, ResearchSource } from '@/lib/types';
 import { terpeneSimilarStrains } from '@/lib/recommend';
+import { SITE_URL } from '@/lib/siteConfig';
 import TypeBadge from '@/components/TypeBadge';
 import StrainSourceBadge from '@/components/StrainSourceBadge';
 import AiEstimateDisclaimer from '@/components/AiEstimateDisclaimer';
@@ -16,7 +19,10 @@ import ReviewsSection from '@/components/ReviewsSection';
 
 export const revalidate = 0;
 
-async function getStrain(slug: string) {
+// Wrapped in React's cache() so generateMetadata() and the page component
+// share one Supabase round-trip per request instead of fetching the same
+// strain twice.
+const getStrain = cache(async (slug: string) => {
   const supabase = createServerReadClient();
   const { data: strain } = await supabase.from('strains').select('*').eq('slug', slug).maybeSingle();
   if (!strain) return null;
@@ -99,6 +105,37 @@ async function getStrain(slug: string) {
     terpeneMatches,
     finderName,
     heroPhotoUrl,
+  };
+});
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const result = await getStrain(slug);
+  if (!result) return { title: 'Strain not found' };
+  const { strain, heroPhotoUrl } = result;
+  const title = `${strain.name} — ${strain.type} Strain`;
+  const description = `${strain.name}: THC ${strain.thc}%, CBD ${strain.cbd}%. ${strain.description}`.slice(0, 200);
+  const image = heroPhotoUrl || undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `${SITE_URL}/strains/${strain.slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `${SITE_URL}/strains/${strain.slug}`,
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
   };
 }
 

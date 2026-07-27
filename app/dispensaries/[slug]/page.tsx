@@ -1,6 +1,9 @@
+import { cache } from 'react';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { Dispensary, Product, Strain, Deal, PRODUCT_CATEGORIES } from '@/lib/types';
+import { SITE_URL } from '@/lib/siteConfig';
 import TypeBadge from '@/components/TypeBadge';
 import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
 import StrainPhoto from '@/components/StrainPhoto';
@@ -12,7 +15,10 @@ export const revalidate = 0;
 
 const DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-async function getDispensary(slug: string) {
+// Wrapped in React's cache() so generateMetadata() and the page component
+// share one Supabase round-trip per request instead of fetching the same
+// dispensary twice.
+const getDispensary = cache(async (slug: string) => {
   const supabase = createServerReadClient();
   const { data: dispensary } = await supabase
     .from('dispensaries')
@@ -47,6 +53,42 @@ async function getDispensary(slug: string) {
     avgRating,
     reviewCount,
     deals: liveDeals,
+  };
+});
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const result = await getDispensary(slug);
+  if (!result) return { title: 'Dispensary not found' };
+  const { dispensary, avgRating, reviewCount } = result;
+  const title = `${dispensary.name} — ${dispensary.city}, ${dispensary.state}`;
+  const description = (
+    dispensary.description ||
+    `Licensed dispensary in ${dispensary.city}, ${dispensary.state}.${
+      reviewCount > 0 ? ` Rated ${avgRating.toFixed(1)}/5 from ${reviewCount} reviews.` : ''
+    }`
+  ).slice(0, 200);
+  const image = dispensary.banner_url || dispensary.logo_url || undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `${SITE_URL}/dispensaries/${dispensary.slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `${SITE_URL}/dispensaries/${dispensary.slug}`,
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
   };
 }
 
