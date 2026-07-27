@@ -109,7 +109,7 @@ export default function PricingPage() {
             </div>
             <ul className="mt-6 space-y-2 text-sm text-canopy-muted">
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Full strain & dispensary directory</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>AI budtender chat</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>AI budtender chat -- fresh matches every time</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Up to 10 saved favorites</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Earn community points for reviews & referrals</span></li>
             </ul>
@@ -121,12 +121,20 @@ export default function PricingPage() {
               <span className="text-3xl font-bold text-canopy-text">$5</span>
               <span className="text-sm text-canopy-muted">/ month</span>
             </div>
-            <ul className="mt-6 space-y-2 text-sm text-canopy-muted">
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Everything in Free</span></li>
+            {/* Free already lists "AI budtender chat" as a feature, so burying
+                the personalization upgrade as one bullet among five made
+                Canopy+ look skippable. This callout leads with the actual
+                headline reason to pay: a named, upgraded assistant, not a
+                generic one. */}
+            <div className="mt-4 rounded-xl border border-canopy-green/30 bg-canopy-green/10 px-3 py-2">
+              <p className="text-sm font-semibold text-canopy-green">Unlocks the AI Personal Budtender</p>
+            </div>
+            <ul className="mt-4 space-y-2 text-sm text-canopy-muted">
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Remembers every strain you've rated</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Never re-suggests one you disliked</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Gets more tailored every time you chat</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Unlimited saved favorites (Free caps at 10)</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>AI budtender remembers your past ratings and steers recommendations toward what you actually liked</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Canopy+ Member badge on the community leaderboard</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>+10 bonus points to start</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Canopy+ Member badge + 10 bonus points to start</span></li>
             </ul>
             {notice && <p className="mt-3 text-xs text-red-400">{notice}</p>}
             <button

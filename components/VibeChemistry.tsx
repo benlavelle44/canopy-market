@@ -32,9 +32,33 @@ export default function VibeChemistry({ strain }: { strain: Strain }) {
         <span className="text-lg">🔮</span>
         <h3 className="text-sm font-semibold text-canopy-text">Vibe &amp; Chemistry</h3>
       </div>
-      <p className="mb-3 text-[11px] text-canopy-muted">
+      <p className="mb-2 text-[11px] text-canopy-muted">
         Color-linked by dominant terpene -- see what's believed to drive each effect.
       </p>
+
+      {/* Explicit, educational color key. Each terpene keeps ONE fixed color
+          everywhere in the app (see lib/terpeneProfiles.ts) -- that part is
+          already consistent. What isn't obvious without a key: the same
+          effect word (e.g. "Relaxed") can show up in more than one color
+          below, because more than one terpene can independently cause it --
+          each chip is colored by the terpene that causes it, not by the
+          effect itself. Spelling that out here, with the one-line "what it
+          is" for each terpene, means nobody has to decode it by hue alone or
+          just take the color's word for it. */}
+      <div className="mb-3 rounded-lg bg-canopy-bg/60 px-2.5 py-2">
+        <p className="mb-1.5 text-[10px] uppercase tracking-wide text-canopy-muted">
+          Key -- same color below = same terpene. One effect can have several colors if more than one terpene causes it.
+        </p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {groups.map((g) => (
+            <span key={g.terpene.name} className="flex items-center gap-1.5 text-[10px] text-canopy-muted">
+              <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: g.color }} />
+              <span className="font-medium" style={{ color: g.color }}>{g.terpene.name}</span>
+              {g.profile && <span>-- {g.profile.vibe}</span>}
+            </span>
+          ))}
+        </div>
+      </div>
 
       <div className="space-y-3">
         {groups.map((g) => (
