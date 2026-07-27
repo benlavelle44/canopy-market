@@ -9,6 +9,7 @@ import NotificationBell from '@/components/NotificationBell';
 export default function NavBar() {
   const [email, setEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [hasDispensary, setHasDispensary] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -26,8 +27,31 @@ export default function NavBar() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Determines the single "your stuff" destination in the nav -- a shopper
+  // sees My Dashboard (/account), a dispensary owner sees My Dispensary
+  // (/dashboard). Never both at once; each page already cross-links to the
+  // other when relevant (account has a "Manage Your Dispensary" link, and
+  // the dashboard links back to /account) so nothing is actually hidden.
+  useEffect(() => {
+    if (!userId) {
+      setHasDispensary(false);
+      return;
+    }
+    supabase
+      .from('dispensaries')
+      .select('id')
+      .eq('owner_id', userId)
+      .limit(1)
+      .then(({ data }) => setHasDispensary((data || []).length > 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   useEffect(() => setMenuOpen(false), [pathname]);
 
+  // CMF-1 Spec intentionally isn't a top-level link -- it's a menu-feed
+  // integration doc for dispensary owners, not something a shopper needs to
+  // see. It's already linked contextually from the dashboard's CSV import
+  // section.
   const links = [
     { href: '/shop', label: 'Shop' },
     { href: '/deals', label: 'Deals' },
@@ -37,7 +61,6 @@ export default function NavBar() {
     { href: '/community', label: 'Community' },
     { href: '/learn', label: 'Learn' },
     { href: '/insights', label: 'Insights' },
-    { href: '/cmf', label: 'CMF-1 Spec' },
     { href: '/legal', label: 'Legal' },
   ];
 
@@ -79,12 +102,15 @@ export default function NavBar() {
           {email ? (
             <>
               {userId && <NotificationBell userId={userId} />}
-              <Link href="/dashboard" className="text-sm text-canopy-muted hover:text-canopy-text">
-                My Dispensary
-              </Link>
-              <Link href="/account" className="text-sm text-canopy-muted hover:text-canopy-text">
-                My Dashboard
-              </Link>
+              {hasDispensary ? (
+                <Link href="/dashboard" className="text-sm text-canopy-muted hover:text-canopy-text">
+                  My Dispensary
+                </Link>
+              ) : (
+                <Link href="/account" className="text-sm text-canopy-muted hover:text-canopy-text">
+                  My Dashboard
+                </Link>
+              )}
               <button
                 onClick={handleSignOut}
                 className="rounded-full bg-canopy-card px-4 py-2 text-sm font-medium text-canopy-text hover:bg-canopy-border"
@@ -129,12 +155,15 @@ export default function NavBar() {
                     <NotificationBell userId={userId} />
                   </div>
                 )}
-                <Link href="/dashboard" className="text-canopy-muted">
-                  My Dispensary
-                </Link>
-                <Link href="/account" className="text-canopy-muted">
-                  My Dashboard
-                </Link>
+                {hasDispensary ? (
+                  <Link href="/dashboard" className="text-canopy-muted">
+                    My Dispensary
+                  </Link>
+                ) : (
+                  <Link href="/account" className="text-canopy-muted">
+                    My Dashboard
+                  </Link>
+                )}
                 <button onClick={handleSignOut} className="text-left text-canopy-muted">
                   Sign out
                 </button>

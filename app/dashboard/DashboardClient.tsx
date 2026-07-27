@@ -236,13 +236,21 @@ export default function DashboardClient() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-groovy text-3xl text-gradient-trippy">Your Dashboard</h1>
-        <Link
-          href="/dispensary-signup"
-          className="rounded-full border border-canopy-border px-4 py-2 text-sm font-medium hover:border-canopy-green"
-        >
-          + List Another Dispensary
-        </Link>
+        <h1 className="font-groovy text-3xl text-gradient-trippy">Your Dispensary</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/account"
+            className="text-sm text-canopy-muted hover:text-canopy-text"
+          >
+            👤 My Account
+          </Link>
+          <Link
+            href="/dispensary-signup"
+            className="rounded-full border border-canopy-border px-4 py-2 text-sm font-medium hover:border-canopy-green"
+          >
+            + List Another Dispensary
+          </Link>
+        </div>
       </div>
 
       {notice && (
