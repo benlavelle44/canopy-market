@@ -2,7 +2,7 @@ import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { createServerReadClient } from '@/lib/supabaseServer';
-import { Dispensary, Product, Strain, Deal, PRODUCT_CATEGORIES } from '@/lib/types';
+import { Dispensary, Product, Strain, Concentrate, Edible, Deal, PRODUCT_CATEGORIES } from '@/lib/types';
 import { SITE_URL } from '@/lib/siteConfig';
 import TypeBadge from '@/components/TypeBadge';
 import DispensaryReviewsSection from '@/components/DispensaryReviewsSection';
@@ -28,7 +28,11 @@ const getDispensary = cache(async (slug: string) => {
   if (!dispensary) return null;
 
   const [{ data: products }, { data: reviews }, { data: deals }] = await Promise.all([
-    supabase.from('products').select('*, strains(*)').eq('dispensary_id', dispensary.id).order('category'),
+    supabase
+      .from('products')
+      .select('*, strains(*), concentrates(*), edibles(*)')
+      .eq('dispensary_id', dispensary.id)
+      .order('category'),
     supabase.from('dispensary_reviews').select('rating').eq('dispensary_id', dispensary.id),
     supabase
       .from('deals')
@@ -49,7 +53,11 @@ const getDispensary = cache(async (slug: string) => {
 
   return {
     dispensary: dispensary as Dispensary,
-    products: (products || []) as (Product & { strains: Strain | null })[],
+    products: (products || []) as (Product & {
+      strains: Strain | null;
+      concentrates: Concentrate | null;
+      edibles: Edible | null;
+    })[],
     avgRating,
     reviewCount,
     deals: liveDeals,
@@ -245,15 +253,26 @@ export default async function DispensaryDetailPage({
                                   ever drive name/effects, never override a product's
                                   own lab numbers. Always prefer the product's own
                                   thc/cbd; fall back to the strain's only when the
-                                  product itself has none entered. */}
+                                  product itself has none entered.
+                                  Edibles/tinctures/topicals are dosed in mg, not %,
+                                  so the unit has to follow the category -- showing
+                                  "THC 10%" on a 10mg gummy would be flatly wrong. */}
                               {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
-                              {p.thc || p.cbd || p.strains ? (
-                                <p className="text-xs text-canopy-muted">
-                                  {p.thc ? `THC ${p.thc}%` : p.strains ? `THC ${p.strains.thc}%` : ''}
-                                  {(p.thc || p.strains?.thc) && (p.cbd || p.strains?.cbd) ? ' · ' : ''}
-                                  {p.cbd ? `CBD ${p.cbd}%` : p.strains ? `CBD ${p.strains.cbd}%` : ''}
-                                </p>
-                              ) : null}
+                              {(() => {
+                                const isDoseBased =
+                                  p.category === 'edible' || p.category === 'tincture' || p.category === 'topical';
+                                const unit = isDoseBased ? 'mg' : '%';
+                                const thc = p.thc ?? (!isDoseBased ? p.strains?.thc : undefined);
+                                const cbd = p.cbd ?? (!isDoseBased ? p.strains?.cbd : undefined);
+                                if (thc == null && cbd == null) return null;
+                                return (
+                                  <p className="text-xs text-canopy-muted">
+                                    {thc != null ? `THC ${thc}${unit}` : ''}
+                                    {thc != null && cbd != null ? ' · ' : ''}
+                                    {cbd != null ? `CBD ${cbd}${unit}` : ''}
+                                  </p>
+                                );
+                              })()}
                             </div>
                             <span
                               className={`whitespace-nowrap font-semibold ${p.in_stock ? 'text-canopy-green' : 'text-canopy-muted'}`}
@@ -274,7 +293,15 @@ export default async function DispensaryDetailPage({
                           <FlipProductCard
                             imageUrl={p.image_url}
                             photoCredit={dispensary.name}
-                            href={p.strains ? `/strains/${p.strains.slug}` : undefined}
+                            href={
+                              p.strains
+                                ? `/strains/${p.strains.slug}`
+                                : p.concentrates
+                                  ? `/concentrates/${p.concentrates.slug}`
+                                  : p.edibles
+                                    ? `/edibles/${p.edibles.slug}`
+                                    : undefined
+                            }
                           >
                             {card}
                           </FlipProductCard>

@@ -92,6 +92,8 @@ export interface Product {
   id: string;
   dispensary_id: string;
   strain_id: string | null;
+  concentrate_id?: string | null;
+  edible_id?: string | null;
   category: ProductCategory;
   name: string;
   brand: string | null;
@@ -103,6 +105,66 @@ export interface Product {
   in_stock: boolean;
   sku?: string | null;
   created_at: string;
+}
+
+// Knowledge-base entry for a concentrate/dab type (Shatter, Live Resin,
+// etc.) -- generic educational content shared across every dispensary's
+// product of that type, distinct from a specific product listing's own
+// price/potency/stock. Categories are extraction/consistency types, not
+// per-strain.
+export interface Concentrate {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  extraction_method: string | null;
+  consistency: string | null;
+  typical_thc_range: string | null;
+  typical_terpene_range: string | null;
+  description: string | null;
+  why_choose_this: string | null;
+  best_for: string[];
+  effects: string[];
+  flavor_notes: string | null;
+  terpene_preservation: string | null;
+  shelf_stability: string | null;
+  beginner_friendly: boolean;
+  equipment_needed: string | null;
+  image_url: string | null;
+  rating: number;
+  review_count: number;
+  featured: boolean;
+  source?: StrainSource;
+  verification_status?: StrainVerificationStatus;
+  research_sources?: ResearchSource[] | null;
+}
+
+// Same idea as Concentrate, for the ingested/applied side of the catalog --
+// edibles, tinctures, and topicals. Potency is mg-based (dosage_mg/cbd_mg),
+// not %, since that's how this category is actually labeled and dosed.
+export interface Edible {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  description: string | null;
+  why_choose_this: string | null;
+  best_for: string[];
+  effects: string[];
+  beginner_friendly: boolean;
+  dosage_mg: number | null;
+  cbd_mg: number | null;
+  onset_time: string | null;
+  duration: string | null;
+  ingredients: string | null;
+  allergens: string[];
+  image_url: string | null;
+  rating: number;
+  review_count: number;
+  featured: boolean;
+  source?: StrainSource;
+  verification_status?: StrainVerificationStatus;
+  research_sources?: ResearchSource[] | null;
 }
 
 export interface Profile {
