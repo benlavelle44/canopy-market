@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabaseClient';
 
 interface Availability {
@@ -134,7 +135,16 @@ export default function AssistantChat() {
     <div className="flex flex-col rounded-2xl border border-canopy-border bg-canopy-panel">
       <div className="flex max-h-[60vh] min-h-[40vh] flex-col gap-4 overflow-y-auto p-5">
         {messages.map((m) => (
-          <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+          <div key={m.id} className={m.role === 'user' ? 'flex justify-end' : 'flex items-end justify-start gap-2'}>
+            {m.role === 'assistant' && (
+              <Image
+                src="/kief/kief-icon.png"
+                alt="Kief"
+                width={32}
+                height={32}
+                className="mb-1 shrink-0 rounded-full"
+              />
+            )}
             <div
               className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
                 m.role === 'user'

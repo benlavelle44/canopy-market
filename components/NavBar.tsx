@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabaseClient';
@@ -121,7 +122,14 @@ export default function NavBar() {
 
         <nav className="hidden items-center gap-4 text-sm text-canopy-muted lg:flex">
           {primaryLinks.map((l) => (
-            <Link key={l.href} href={l.href} className="transition hover:text-canopy-text">
+            <Link
+              key={l.href}
+              href={l.href}
+              className="flex items-center gap-1.5 transition hover:text-canopy-text"
+            >
+              {l.href === '/assistant' && (
+                <Image src="/kief/kief-icon.png" alt="" width={20} height={20} className="rounded-full" />
+              )}
               {l.label}
             </Link>
           ))}

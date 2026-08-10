@@ -32,7 +32,18 @@ export async function POST(req: NextRequest) {
       case 'checkout.session.completed': {
         const session: any = event.data.object;
         const kind = session.metadata?.kind || 'dispensary';
-        if (kind === 'member') {
+        if (kind === 'credits') {
+          // One-time AI budtender credit pack purchase -- no subscription
+          // involved, just add the purchased credits. Uses the
+          // increment_ai_credits() RPC (atomic add) rather than a plain
+          // update, since a duplicate Stripe webhook retry re-running a
+          // read-then-write here could double-credit a purchase.
+          const userId = session.metadata?.userId;
+          const credits = Number(session.metadata?.credits || 0);
+          if (userId && credits > 0) {
+            await admin.rpc('increment_ai_credits', { target_user: userId, amount: credits });
+          }
+        } else if (kind === 'member') {
           const userId = session.metadata?.userId;
           if (userId) {
             await admin
