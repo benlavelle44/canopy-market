@@ -186,7 +186,7 @@ export default function PricingPage() {
                     : 'border border-canopy-border text-canopy-text hover:border-canopy-green'
                 }`}
               >
-                {tier.id === 'free' ? 'List for Free' : 'Upgrade from Dashboard'}
+                {tier.id === 'free' ? 'List for Free' : `Upgrade to ${tier.name}`}
               </Link>
             </div>
           ))}

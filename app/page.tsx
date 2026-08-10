@@ -1,19 +1,32 @@
 import Link from 'next/link';
 import { createServerReadClient } from '@/lib/supabaseServer';
+import { getShopperState } from '@/lib/shopperState';
 import { Strain, Dispensary } from '@/lib/types';
 import StrainCard from '@/components/StrainCard';
 import DispensaryCard from '@/components/DispensaryCard';
 
 export const revalidate = 0;
 
-async function getData() {
+async function getData(shopperState: string | null) {
   const supabase = createServerReadClient();
+  let dispQuery = supabase.from('dispensaries').select('*').eq('status', 'approved').order('name').limit(3);
+  let dispCountQuery = supabase.from('dispensaries').select('*', { count: 'exact', head: true }).eq('status', 'approved');
+  // "Dispensaries on Canopy" and the dispensary count stat are what a
+  // shopper reads as "my options" -- those need to be scoped to their
+  // confirmed state (cannabis can't cross state lines). The stateCount
+  // stat and hero badge below stay unscoped on purpose: they describe
+  // Canopy's overall footprint, not a specific shopper's options.
+  if (shopperState) {
+    dispQuery = dispQuery.eq('state', shopperState);
+    dispCountQuery = dispCountQuery.eq('state', shopperState);
+  }
+
   const [{ data: featured }, { data: dispensaries }, { count: strainCount }, { count: dispCount }, { data: stateRows }] =
     await Promise.all([
       supabase.from('strains').select('*').eq('featured', true).limit(6),
-      supabase.from('dispensaries').select('*').eq('status', 'approved').limit(3),
+      dispQuery,
       supabase.from('strains').select('*', { count: 'exact', head: true }),
-      supabase.from('dispensaries').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+      dispCountQuery,
       supabase.from('dispensaries').select('state').eq('status', 'approved'),
     ]);
 
@@ -33,7 +46,8 @@ async function getData() {
 }
 
 export default async function HomePage() {
-  const { featured, dispensaries, strainCount, dispCount, stateCount } = await getData();
+  const shopperState = await getShopperState();
+  const { featured, dispensaries, strainCount, dispCount, stateCount } = await getData(shopperState);
 
   return (
     <div>
@@ -71,6 +85,7 @@ export default async function HomePage() {
             </div>
             <div>
               <span className="text-xl font-bold text-canopy-text">{dispCount}+</span> dispensaries
+              {shopperState ? ` in ${shopperState}` : ''}
             </div>
             <div>
               <span className="text-xl font-bold text-canopy-text">{stateCount}</span> states
@@ -98,7 +113,9 @@ export default async function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="mb-6 flex items-end justify-between">
-          <h2 className="text-2xl font-semibold">Dispensaries on Canopy</h2>
+          <h2 className="text-2xl font-semibold">
+            Dispensaries on Canopy{shopperState ? ` in ${shopperState}` : ''}
+          </h2>
           <Link href="/dispensaries" className="text-sm text-canopy-green hover:underline">
             View directory →
           </Link>

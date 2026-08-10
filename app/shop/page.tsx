@@ -13,21 +13,36 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<ProductCategory | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [shopperState, setShopperState] = useState<string | null>(null);
+  const [stateChecked, setStateChecked] = useState(false);
+
+  // Cannabis can't ship or be ordered across state lines -- this page was
+  // showing every product from every dispensary on the platform with zero
+  // geographic scoping, the worst offender of the pages that needed this.
+  // Read the same canopy_state cookie the StateGate/server pages read
+  // before firing the first query, so there's no flash of out-of-state
+  // products before the scoped set replaces them.
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|; )canopy_state=([^;]*)/);
+    setShopperState(match ? decodeURIComponent(match[1]) : null);
+    setStateChecked(true);
+  }, []);
 
   useEffect(() => {
+    if (!stateChecked) return;
     (async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('products')
         .select('*, dispensaries!inner(id, name, slug, city, state, tier, status)')
         .eq('in_stock', true)
-        .eq('dispensaries.status', 'approved')
-        .order('created_at', { ascending: false })
-        .limit(300);
+        .eq('dispensaries.status', 'approved');
+      if (shopperState) q = q.eq('dispensaries.state', shopperState);
+      const { data } = await q.order('created_at', { ascending: false }).limit(300);
       setItems((data || []) as any);
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stateChecked, shopperState]);
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
@@ -52,8 +67,8 @@ export default function ShopPage() {
         <h1 className="font-groovy text-4xl text-gradient-trippy">The Canopy Shop</h1>
         <p className="mx-auto mt-3 max-w-xl text-canopy-muted">
           Flower, prerolls, dabs, vapes, edibles, tinctures, topicals, and accessories — every
-          category, every dispensary on Canopy, in one place. Every order happens directly through
-          the dispensary's own site.
+          category, every dispensary on Canopy{shopperState ? ` in ${shopperState}` : ''}, in one
+          place. Every order happens directly through the dispensary's own site.
         </p>
       </div>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { getShopperState } from '@/lib/shopperState';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { heuristicRecommend, heuristicReply, reasonForMatch } from '@/lib/recommend';
 import { extractTrailingJson, extractAllText } from '@/lib/extractJson';
@@ -207,17 +208,24 @@ export async function POST(req: NextRequest) {
       reasons = Object.fromEntries(picked.map((s) => [s.slug, reasonForMatch(s, message)]));
     }
 
-    // Look up which approved dispensaries carry these strains
+    // Look up which approved dispensaries carry these strains -- scoped to
+    // the shopper's confirmed state (see lib/shopperState.ts). Cannabis
+    // can't cross state lines, so "where to get this" must always be
+    // limited to where the shopper actually is, not just wherever happens
+    // to stock the strain.
     const strainIds = picked.map((p) => p.id);
+    const shopperState = await getShopperState();
     let availability: Record<string, { name: string; slug: string; price: number | null; city: string; state: string }[]> = {};
 
     if (strainIds.length > 0) {
-      const { data: products } = await supabase
+      let productsQuery = supabase
         .from('products')
         .select('strain_id, price, dispensaries!inner(id, name, slug, city, state, status)')
         .in('strain_id', strainIds)
         .eq('category', 'flower')
         .eq('dispensaries.status', 'approved');
+      if (shopperState) productsQuery = productsQuery.eq('dispensaries.state', shopperState);
+      const { data: products } = await productsQuery;
 
       for (const row of products || []) {
         const disp: any = (row as any).dispensaries;

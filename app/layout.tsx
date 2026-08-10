@@ -3,6 +3,7 @@ import './globals.css';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 import AgeGate from '@/components/AgeGate';
+import StateGate from '@/components/StateGate';
 import TrippyBackground from '@/components/TrippyBackground';
 import { SITE_URL } from '@/lib/siteConfig';
 
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-canopy-bg font-sans text-canopy-text">
         <TrippyBackground />
         <AgeGate />
+        <StateGate />
         <NavBar />
         <main className="min-h-[70vh]">{children}</main>
         <Footer />

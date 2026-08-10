@@ -236,22 +236,24 @@ export default async function DispensaryDetailPage({
                                   </span>
                                 )}
                               </div>
-                              {p.strains ? (
+                              {/* Was branching on "does this product have a linked
+                                  strain" rather than "does this product have its own
+                                  THC/CBD" -- so a concentrate/vape linked to a strain
+                                  (for its name/effects) silently showed the strain's
+                                  flower-level THC% instead of the extract's real,
+                                  much higher potency. The strain link should only
+                                  ever drive name/effects, never override a product's
+                                  own lab numbers. Always prefer the product's own
+                                  thc/cbd; fall back to the strain's only when the
+                                  product itself has none entered. */}
+                              {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
+                              {p.thc || p.cbd || p.strains ? (
                                 <p className="text-xs text-canopy-muted">
-                                  THC {p.strains.thc}% · CBD {p.strains.cbd}%
+                                  {p.thc ? `THC ${p.thc}%` : p.strains ? `THC ${p.strains.thc}%` : ''}
+                                  {(p.thc || p.strains?.thc) && (p.cbd || p.strains?.cbd) ? ' · ' : ''}
+                                  {p.cbd ? `CBD ${p.cbd}%` : p.strains ? `CBD ${p.strains.cbd}%` : ''}
                                 </p>
-                              ) : (
-                                <>
-                                  {p.brand && <span className="text-xs text-canopy-muted">{p.brand}</span>}
-                                  {(p.thc || p.cbd) && (
-                                    <p className="text-xs text-canopy-muted">
-                                      {p.thc ? `THC ${p.thc}%` : ''}
-                                      {p.thc && p.cbd ? ' · ' : ''}
-                                      {p.cbd ? `CBD ${p.cbd}%` : ''}
-                                    </p>
-                                  )}
-                                </>
-                              )}
+                              ) : null}
                             </div>
                             <span
                               className={`whitespace-nowrap font-semibold ${p.in_stock ? 'text-canopy-green' : 'text-canopy-muted'}`}

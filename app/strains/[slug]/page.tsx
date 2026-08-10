@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { getShopperState } from '@/lib/shopperState';
 import { Strain, Dispensary, Product, ResearchSource } from '@/lib/types';
 import { terpeneSimilarStrains } from '@/lib/recommend';
 import { SITE_URL } from '@/lib/siteConfig';
@@ -151,6 +152,15 @@ export default async function StrainDetailPage({
   const { strain, listings, similar, terpeneMatches, finderName, heroPhotoUrl } = result;
   const isCommunityFind = strain.source === 'community_find';
 
+  // "Available at" is a direct path toward ordering, so it needs the same
+  // state scoping as /shop and the AI budtender -- cannabis can't cross
+  // state lines. Filtered here (post-query, in memory) rather than adding
+  // a state param to getStrain()/getAllStates() so generateMetadata()
+  // above -- which also calls getStrain() and has no reason to care about
+  // the shopper's state -- keeps sharing the same cached call.
+  const shopperState = await getShopperState();
+  const scopedListings = shopperState ? listings.filter((l) => l.dispensaries.state === shopperState) : listings;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       <div className="grid gap-8 md:grid-cols-[280px_1fr]">
@@ -196,10 +206,14 @@ export default async function StrainDetailPage({
       </div>
 
       <section className="mt-12">
-        <h2 className="mb-4 text-xl font-semibold">Available at</h2>
-        {listings.length === 0 ? (
+        <h2 className="mb-4 text-xl font-semibold">
+          Available at{shopperState ? ` in ${shopperState}` : ''}
+        </h2>
+        {scopedListings.length === 0 ? (
           <p className="text-sm text-canopy-muted">
-            No dispensaries on Canopy currently list this strain.{' '}
+            {listings.length > 0 && shopperState
+              ? `No dispensaries in ${shopperState} currently list this strain yet.`
+              : 'No dispensaries on Canopy currently list this strain.'}{' '}
             <Link href="/dispensary-signup" className="text-canopy-green hover:underline">
               List yours
             </Link>
@@ -207,7 +221,7 @@ export default async function StrainDetailPage({
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {listings.map((l) => (
+            {scopedListings.map((l) => (
               <div
                 key={l.id}
                 className="flex items-center justify-between rounded-xl border border-canopy-border bg-canopy-card p-4"

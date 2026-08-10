@@ -12,6 +12,7 @@ export default function NavBar() {
   const [hasDispensary, setHasDispensary] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [shopperState, setShopperState] = useState<string | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -52,6 +53,19 @@ export default function NavBar() {
     setMenuOpen(false);
     setMoreOpen(false);
   }, [pathname]);
+
+  // Reads the same canopy_state cookie the StateGate/server pages read, so
+  // the nav can show which state's listings the shopper is currently
+  // scoped to and offer a one-click way to change it.
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|; )canopy_state=([^;]*)/);
+    setShopperState(match ? decodeURIComponent(match[1]) : null);
+  }, [pathname]);
+
+  const changeState = () => {
+    document.cookie = 'canopy_state=; path=/; max-age=0';
+    window.location.reload();
+  };
 
   // Close the "More" dropdown on an outside click, same pattern as
   // NotificationBell.
@@ -137,6 +151,15 @@ export default function NavBar() {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          {shopperState && (
+            <button
+              onClick={changeState}
+              title="Change your state"
+              className="rounded-full border border-canopy-border px-3 py-1.5 text-xs font-medium text-canopy-muted transition hover:border-canopy-green hover:text-canopy-text"
+            >
+              📍 {shopperState}
+            </button>
+          )}
           <Link
             href="/dispensary-signup"
             className="rounded-full border border-canopy-border px-4 py-2 text-sm font-medium text-canopy-text transition hover:border-canopy-green"
@@ -180,6 +203,11 @@ export default function NavBar() {
       {menuOpen && (
         <div className="border-t border-canopy-border px-4 pb-4 lg:hidden">
           <nav className="flex flex-col gap-3 pt-3 text-sm">
+            {shopperState && (
+              <button onClick={changeState} className="text-left text-canopy-muted">
+                📍 Shopping in {shopperState} — change
+              </button>
+            )}
             {links.map((l) => (
               <Link key={l.href} href={l.href} className="text-canopy-muted">
                 {l.label}
