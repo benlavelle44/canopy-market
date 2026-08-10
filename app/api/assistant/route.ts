@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { getShopperState } from '@/lib/shopperState';
+import { checkAndConsumeAiCredit } from '@/lib/aiCredits';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { heuristicRecommend, heuristicReply, reasonForMatch } from '@/lib/recommend';
 import { extractTrailingJson, extractAllText } from '@/lib/extractJson';
 import { Strain, Concentrate, Edible } from '@/lib/types';
 
 export const runtime = 'nodejs';
+
+// Signed-out visitors get exactly one real, Claude-powered reply from
+// Kief before falling back to the free heuristic matcher -- a taste of
+// the real thing rather than a locked door, with the upsell being "sign
+// up for 5 free/month" rather than "sign up to try this at all." Gated by
+// a cookie, not an account, so it's a soft cap (clearing cookies/incognito
+// resets it) rather than a hard one -- proportionate to a marketing nudge,
+// not a security boundary. The real cost cap for repeat/scripted abuse is
+// still the credit system below, which only ever applies past this first
+// taste.
+const TASTE_COOKIE = 'canopy_kief_taste';
 
 interface ChatTurn {
   role: 'user' | 'assistant';
@@ -116,7 +129,7 @@ async function callClaude(
     ? `\nThis shopper's past ratings on Canopy: ${historyDigest}. Lean toward items similar in effects/type to ones they rated 4-5 stars. Avoid recommending something they rated 2 stars or below unless nothing else fits -- and if you do include or skip one for this reason, say so briefly in its "reason".`
     : '';
 
-  const system = `You are the AI budtender for Canopy Market, a cannabis marketplace covering flower strains, concentrates/dabs, and edibles/tinctures/topicals. You help people find products for how they want to feel or symptoms they want relief from. You are NOT a doctor and must never give medical advice or dosing instructions -- keep guidance general and always suggest starting low and going slow, and suggest consulting a doctor for medical conditions.
+  const system = `You are Kief, the AI budtender for Canopy Market, a cannabis marketplace covering flower strains, concentrates/dabs, and edibles/tinctures/topicals. You help people find products for how they want to feel or symptoms they want relief from. Warm, knowledgeable, a little playful -- like a good budtender, not a salesperson. You can refer to yourself as Kief naturally (not in every message). You are NOT a doctor and must never give medical advice or dosing instructions -- keep guidance general and always suggest starting low and going slow, and suggest consulting a doctor for medical conditions.
 
 You work in one of two modes, and must pick exactly one per reply:
 
@@ -298,7 +311,53 @@ export async function POST(req: NextRequest) {
     let poweredBy: 'ai' | 'heuristic' = 'heuristic';
     let resolvedPicks: ResolvedPick[] = [];
 
-    const aiResult = await callClaude(message, history, strains, concentrates, edibles, historyDigest);
+    // The Claude API costs real money per call, so it's only reachable for
+    // signed-in shoppers with credits available (see lib/aiCredits.ts) --
+    // Canopy+ is unlimited, everyone else gets 5 free/month then draws on
+    // any purchased packs (see /pricing and
+    // app/api/stripe/credits-checkout/route.ts). A signed-in shopper who's
+    // simply out of credits gets a graceful heuristic fallback rather than
+    // an error, with creditsExhausted flagged in the response so the UI
+    // can offer to buy more or upgrade.
+    //
+    // Signed-out visitors get exactly one real reply from Kief (see
+    // TASTE_COOKIE above) before also dropping to the heuristic fallback,
+    // with anonymousTasteUsed flagged so the UI can nudge them to sign up.
+    let credits: { unlimited: boolean; remainingFree: number; remainingPurchased: number } | null = null;
+    let creditsExhausted = false;
+    let anonymousTasteUsed = false;
+    let aiResult: Awaited<ReturnType<typeof callClaude>> = null;
+
+    if (user) {
+      const creditCheck = await checkAndConsumeAiCredit(user.id);
+      credits = {
+        unlimited: creditCheck.unlimited,
+        remainingFree: creditCheck.remainingFree,
+        remainingPurchased: creditCheck.remainingPurchased,
+      };
+      if (creditCheck.allowed) {
+        aiResult = await callClaude(message, history, strains, concentrates, edibles, historyDigest);
+      } else {
+        creditsExhausted = true;
+      }
+    } else {
+      const cookieStore = await cookies();
+      const alreadyTasted = cookieStore.get(TASTE_COOKIE)?.value === '1';
+      if (!alreadyTasted) {
+        aiResult = await callClaude(message, history, strains, concentrates, edibles, historyDigest);
+        if (aiResult) {
+          cookieStore.set(TASTE_COOKIE, '1', {
+            path: '/',
+            maxAge: 60 * 60 * 24 * 365,
+            httpOnly: true,
+            sameSite: 'lax',
+          });
+        }
+      } else {
+        anonymousTasteUsed = true;
+      }
+    }
+
     if (aiResult) {
       poweredBy = 'ai';
       mode = aiResult.mode;
@@ -328,9 +387,10 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      // No Claude API key, or the call failed -- the heuristic fallback
-      // doesn't do the clarify step (it's not conversational), it just
-      // gives its best strain-only match immediately.
+      // Anonymous, out of credits, no Claude API key configured, or the
+      // call failed -- the heuristic fallback doesn't do the clarify step
+      // (it's not conversational), it just gives its best strain-only
+      // match immediately.
       mode = 'recommend';
       const pool = dislikedStrainIds.size > 0 ? strains.filter((s) => !dislikedStrainIds.has(s.id)) : strains;
       const picked = heuristicRecommend(message, pool.length >= 4 ? pool : strains);
@@ -412,6 +472,9 @@ export async function POST(req: NextRequest) {
       reply,
       poweredBy,
       personalized: !!historyDigest,
+      credits,
+      creditsExhausted,
+      anonymousTasteUsed,
       picks: resolvedPicks.map((p) => ({
         type: p.type,
         slug: p.slug,

@@ -62,7 +62,7 @@ export default async function HomePage() {
             <span className="text-gradient-trippy">flower, dabs, edibles & education.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-canopy-muted">
-            Tell our AI budtender how you want to feel. We'll match you to real strains and
+            Tell Kief, our AI budtender, how you want to feel. He'll match you to real strains and
             products, explain the science behind why they work, and show you exactly which local
             dispensaries carry them — flower, prerolls, concentrates, vapes, edibles, tinctures,
             topicals, and accessories, all in one place.
@@ -75,7 +75,7 @@ export default async function HomePage() {
               className="w-full rounded-full border border-canopy-border bg-canopy-panel px-5 py-3 text-sm text-canopy-text placeholder:text-canopy-muted focus:border-canopy-green focus:outline-none"
             />
             <button className="btn-glow whitespace-nowrap rounded-full bg-gradient-to-r from-canopy-green via-canopy-lime to-canopy-green px-6 py-3 text-sm font-semibold text-black">
-              Ask the AI
+              Ask Kief
             </button>
           </form>
 

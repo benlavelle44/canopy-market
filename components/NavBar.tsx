@@ -94,7 +94,7 @@ export default function NavBar() {
     { href: '/deals', label: 'Deals' },
     { href: '/strains', label: 'Strains' },
     { href: '/dispensaries', label: 'Dispensaries' },
-    { href: '/assistant', label: 'AI Budtender' },
+    { href: '/assistant', label: 'Ask Kief' },
   ];
   const moreLinks = [
     { href: '/community', label: 'Community' },

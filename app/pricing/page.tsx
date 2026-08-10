@@ -56,6 +56,8 @@ export default function PricingPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [memberTier, setMemberTier] = useState<'free' | 'plus'>('free');
   const [notice, setNotice] = useState('');
+  const [creditNotice, setCreditNotice] = useState('');
+  const [buyingPack, setBuyingPack] = useState<'5' | '15' | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -87,6 +89,30 @@ export default function PricingPage() {
     }
   };
 
+  const buyCredits = async (pack: '5' | '15') => {
+    if (!userId) {
+      window.location.href = '/signup';
+      return;
+    }
+    setBuyingPack(pack);
+    setCreditNotice('');
+    try {
+      const res = await fetch('/api/stripe/credits-checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userId, email, pack }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setCreditNotice(data.error || 'Credit purchases aren’t available yet.');
+      }
+    } finally {
+      setBuyingPack(null);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-14">
       <div className="mb-12 text-center">
@@ -109,7 +135,7 @@ export default function PricingPage() {
             </div>
             <ul className="mt-6 space-y-2 text-sm text-canopy-muted">
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Full strain & dispensary directory</span></li>
-              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>AI budtender chat -- fresh matches every time</span></li>
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>5 free chats with Kief/month (plus a free taste before you even sign up)</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Up to 10 saved favorites</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Earn community points for reviews & referrals</span></li>
             </ul>
@@ -121,15 +147,18 @@ export default function PricingPage() {
               <span className="text-3xl font-bold text-canopy-text">$5</span>
               <span className="text-sm text-canopy-muted">/ month</span>
             </div>
-            {/* Free already lists "AI budtender chat" as a feature, so burying
+            {/* Free already lists chats with Kief as a feature, so burying
                 the personalization upgrade as one bullet among five made
                 Canopy+ look skippable. This callout leads with the actual
-                headline reason to pay: a named, upgraded assistant, not a
-                generic one. */}
+                headline reason to pay: Kief remembering you, not a
+                generic assistant. "Kief's Insight" is the branded name for
+                that personalized mode -- keep this wording in sync with
+                the AssistantChat.tsx upsell banners and the homepage. */}
             <div className="mt-4 rounded-xl border border-canopy-green/30 bg-canopy-green/10 px-3 py-2">
-              <p className="text-sm font-semibold text-canopy-green">Unlocks the AI Personal Budtender</p>
+              <p className="text-sm font-semibold text-canopy-green">Unlocks Kief's Insight 🦉</p>
             </div>
             <ul className="mt-4 space-y-2 text-sm text-canopy-muted">
+              <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Unlimited chats with Kief -- no monthly cap</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Remembers every strain you've rated</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Never re-suggests one you disliked</span></li>
               <li className="flex items-start gap-2"><span className="text-canopy-green">✓</span><span>Gets more tailored every time you chat</span></li>
@@ -146,6 +175,53 @@ export default function PricingPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* One-time AI credit packs -- for Free-tier shoppers who use up
+          their 5 monthly chats but don't want a subscription. The quick-
+          match heuristic search is always free and unlimited either way;
+          this only tops up Claude-powered chats. */}
+      <div className="mb-16">
+        <h2 className="mb-1 text-center text-xl font-semibold">Need more time with Kief this month?</h2>
+        <p className="mx-auto mb-6 max-w-xl text-center text-sm text-canopy-muted">
+          Buy a one-time credit pack -- no subscription. Or join Canopy+ above for Kief's Insight:
+          unlimited, personalized chats.
+        </p>
+        <div className="mx-auto grid max-w-3xl gap-6 sm:grid-cols-2">
+          <div className="rounded-3xl border border-canopy-border bg-canopy-card p-6">
+            <h3 className="font-groovy text-xl">5 AI Chats</h3>
+            <p className="mt-1 text-sm text-canopy-muted">A quick top-up.</p>
+            <div className="mt-4 flex items-baseline gap-1">
+              <span className="text-3xl font-bold text-canopy-text">$2.99</span>
+              <span className="text-sm text-canopy-muted">one-time</span>
+            </div>
+            <p className="mt-4 text-sm text-canopy-muted">Credits never expire and stack with your free monthly chats.</p>
+            <button
+              onClick={() => buyCredits('5')}
+              disabled={buyingPack === '5'}
+              className="mt-8 w-full rounded-full border border-canopy-border px-4 py-2.5 text-center text-sm font-semibold text-canopy-text transition hover:border-canopy-green disabled:opacity-60"
+            >
+              {buyingPack === '5' ? 'Starting checkout…' : userId ? 'Buy 5 Chats' : 'Sign up to buy'}
+            </button>
+          </div>
+          <div className="rounded-3xl border border-canopy-green bg-canopy-card p-6 shadow-glow">
+            <h3 className="font-groovy text-xl">15 AI Chats</h3>
+            <p className="mt-1 text-sm text-canopy-muted">Best value per chat.</p>
+            <div className="mt-4 flex items-baseline gap-1">
+              <span className="text-3xl font-bold text-canopy-text">$6.99</span>
+              <span className="text-sm text-canopy-muted">one-time</span>
+            </div>
+            <p className="mt-4 text-sm text-canopy-muted">Credits never expire and stack with your free monthly chats.</p>
+            <button
+              onClick={() => buyCredits('15')}
+              disabled={buyingPack === '15'}
+              className="btn-glow mt-8 w-full rounded-full bg-gradient-to-r from-canopy-green via-canopy-lime to-canopy-green px-4 py-2.5 text-center text-sm font-semibold text-black disabled:opacity-60"
+            >
+              {buyingPack === '15' ? 'Starting checkout…' : userId ? 'Buy 15 Chats' : 'Sign up to buy'}
+            </button>
+          </div>
+        </div>
+        {creditNotice && <p className="mt-3 text-center text-xs text-red-400">{creditNotice}</p>}
       </div>
 
       {/* Dispensary tiers */}

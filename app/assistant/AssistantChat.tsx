@@ -34,6 +34,8 @@ interface Message {
   picks?: Pick[];
   poweredBy?: 'ai' | 'heuristic';
   personalized?: boolean;
+  creditsExhausted?: boolean;
+  anonymousTasteUsed?: boolean;
 }
 
 const TYPE_LABEL: Record<Pick['type'], string> = {
@@ -58,7 +60,7 @@ export default function AssistantChat() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "Hey! I'm your AI budtender. Tell me how you want to feel, or a symptom you're hoping to ease, and I'll pull real matches from our catalog.",
+        "Hey, I'm Kief 🦉 -- Canopy's AI budtender. Tell me how you want to feel, or a symptom you're hoping to ease, and I'll pull real matches from our catalog.",
     },
   ]);
   const [input, setInput] = useState('');
@@ -98,6 +100,8 @@ export default function AssistantChat() {
           picks: data.picks,
           poweredBy: data.poweredBy,
           personalized: data.personalized,
+          creditsExhausted: data.creditsExhausted,
+          anonymousTasteUsed: data.anonymousTasteUsed,
         },
       ]);
     } catch (e) {
@@ -141,6 +145,29 @@ export default function AssistantChat() {
               <p className="whitespace-pre-wrap">{m.content}</p>
               {m.personalized && (
                 <p className="mt-1 text-[11px] text-canopy-green">✨ Tuned to your past ratings</p>
+              )}
+              {m.creditsExhausted && (
+                <div className="mt-2 rounded-lg border border-canopy-gold/30 bg-canopy-gold/10 px-3 py-2 text-xs text-canopy-gold">
+                  You're out of free chats with Kief this month -- these are quick-match results
+                  instead.{' '}
+                  <Link href="/pricing" className="underline hover:text-canopy-lime">
+                    Buy more chats or go unlimited with Kief's Insight
+                  </Link>
+                  .
+                </div>
+              )}
+              {m.anonymousTasteUsed && (
+                <div className="mt-2 rounded-lg border border-canopy-purple/30 bg-canopy-purple/10 px-3 py-2 text-xs text-canopy-purple">
+                  🦉 That was your free taste of Kief -- these are quick-match results instead.{' '}
+                  <Link href="/signup" className="underline hover:text-canopy-lime">
+                    Sign up free
+                  </Link>{' '}
+                  for 5 more chats a month, or unlock{' '}
+                  <Link href="/pricing" className="underline hover:text-canopy-lime">
+                    Kief's Insight
+                  </Link>{' '}
+                  for unlimited.
+                </div>
               )}
 
               {m.picks && m.picks.length > 0 && (
