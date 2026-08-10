@@ -6,13 +6,39 @@ import { getShopperState } from '@/lib/shopperState';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { heuristicRecommend, heuristicReply, reasonForMatch } from '@/lib/recommend';
 import { extractTrailingJson, extractAllText } from '@/lib/extractJson';
-import { Strain } from '@/lib/types';
+import { Strain, Concentrate, Edible } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
 interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;
+}
+
+type PickType = 'strain' | 'concentrate' | 'edible';
+
+interface RawPick {
+  type: string;
+  slug: string;
+  reason: string;
+}
+
+interface ResolvedPick {
+  type: PickType;
+  id: string;
+  slug: string;
+  name: string;
+  subtitle: string;
+  reason: string;
+  href: string;
+}
+
+interface AvailabilityItem {
+  name: string;
+  slug: string;
+  price: number | null;
+  city: string;
+  state: string;
 }
 
 // Best-effort caller identity -- the assistant works fully signed-out, this
@@ -46,38 +72,73 @@ function mapRow(row: any): Strain {
   };
 }
 
+// This used to always recommend on the very first message -- more of a
+// vending machine than a budtender. A real budtender asks a quick question
+// or two first (what format, new to this or experienced, what's the goal)
+// before pointing at a shelf. Claude now returns one of two "modes" instead
+// of always jumping to recommendations: "clarify" (one short question, no
+// picks yet) or "recommend" (2-4 real picks with reasons). The prompt caps
+// this at a single clarifying round -- it's told to check its own past
+// turns in the conversation and never ask twice.
 async function callClaude(
   message: string,
   history: ChatTurn[],
   strains: Strain[],
+  concentrates: Concentrate[],
+  edibles: Edible[],
   historyDigest: string | null
-) {
+): Promise<{ mode: 'clarify' | 'recommend'; reply: string; picks: RawPick[] } | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
-  const catalog = strains
+  const strainCatalog = strains
     .map(
       (s) =>
-        `${s.slug} | ${s.name} | ${s.type} | THC ${s.thc}% CBD ${s.cbd}% | effects: ${s.effects.join(
-          ', '
-        )} | helps with: ${s.symptoms.join(', ')}`
+        `${s.slug} | type:strain | ${s.name} | ${s.type} | THC ${s.thc}% CBD ${s.cbd}% | effects: ${s.effects.join(', ')} | helps with: ${s.symptoms.join(', ')}`
+    )
+    .join('\n');
+
+  const concentrateCatalog = concentrates
+    .map(
+      (c) =>
+        `${c.slug} | type:concentrate | ${c.name} | ${c.category} | ${c.typical_thc_range || 'THC varies'} | effects: ${c.effects.join(', ')} | best for: ${c.best_for.join(', ')}${c.beginner_friendly ? ' | [beginner-friendly]' : ''}`
+    )
+    .join('\n');
+
+  const edibleCatalog = edibles
+    .map(
+      (e) =>
+        `${e.slug} | type:edible | ${e.name} | ${e.category} | ${e.dosage_mg != null ? `${e.dosage_mg}mg THC` : 'dose varies'} | effects: ${e.effects.join(', ')} | best for: ${e.best_for.join(', ')}${e.beginner_friendly ? ' | [beginner-friendly]' : ''}`
     )
     .join('\n');
 
   const personalization = historyDigest
-    ? `\nThis shopper's past ratings on Canopy: ${historyDigest}. Lean toward strains similar in effects/type to ones they rated 4-5 stars. Avoid recommending something they rated 2 stars or below unless nothing else fits -- and if you do include or skip one for this reason, say so briefly in its "reason".`
+    ? `\nThis shopper's past ratings on Canopy: ${historyDigest}. Lean toward items similar in effects/type to ones they rated 4-5 stars. Avoid recommending something they rated 2 stars or below unless nothing else fits -- and if you do include or skip one for this reason, say so briefly in its "reason".`
     : '';
 
-  const system = `You are the AI budtender for Canopy Market, a cannabis strain discovery marketplace. You help people find strains for how they want to feel or symptoms they want relief from. You are NOT a doctor and must never give medical advice or dosing instructions -- keep guidance general and always suggest starting low and going slow, and suggest consulting a doctor for medical conditions.
+  const system = `You are the AI budtender for Canopy Market, a cannabis marketplace covering flower strains, concentrates/dabs, and edibles/tinctures/topicals. You help people find products for how they want to feel or symptoms they want relief from. You are NOT a doctor and must never give medical advice or dosing instructions -- keep guidance general and always suggest starting low and going slow, and suggest consulting a doctor for medical conditions.
 
-Only recommend strains from this exact catalog (never invent strains):
-${catalog}
+You work in one of two modes, and must pick exactly one per reply:
+
+"clarify" -- Use this ONLY on your first reply in a conversation, and ONLY if you're genuinely missing something that would change your answer: their desired outcome/feeling, whether they're new to cannabis or experienced, or a format preference (flower, dab/concentrate, edible, tincture, topical, or no preference). Ask ONE short, friendly, specific question covering the single biggest gap -- never a list of questions. Look back through the conversation history below: if you already asked a clarifying question earlier in this conversation, you MUST use "recommend" this turn instead, no matter how incomplete the picture still is -- never ask twice.
+
+"recommend" -- Pick 2-4 real items from the catalogs below. Mix formats (strain/concentrate/edible) when it makes sense for the request; stay within one format only if the shopper specified one. Every pick needs its own short, specific reason -- never generic or blank. If the shopper indicated they're new/inexperienced, prefer items marked [beginner-friendly] and say so.
+
+Only recommend items from these exact catalogs (never invent products):
+
+FLOWER STRAINS:
+${strainCatalog}
+
+CONCENTRATES / DABS:
+${concentrateCatalog}
+
+EDIBLES / TINCTURES / TOPICALS:
+${edibleCatalog}
 ${personalization}
 
-Respond ONLY with valid JSON, no markdown fences, matching this shape:
-{"reply": "a warm, concise 2-4 sentence response", "recommendations": [{"slug": "slug1", "reason": "under 10 words, specific to this strain and this request"}, {"slug": "slug2", "reason": "..."}]}
-
-Pick 2-4 of the most relevant strains by slug from the catalog above. Every recommendation needs its own short, specific reason -- never leave it generic or blank.`;
+Respond ONLY with valid JSON, no markdown fences, matching exactly one of these two shapes:
+{"mode": "clarify", "reply": "your one short question"}
+{"mode": "recommend", "reply": "a warm, concise 2-4 sentence response", "recommendations": [{"type": "strain", "slug": "slug1", "reason": "under 12 words, specific to this item and this request"}]}`;
 
   const messages = [
     ...history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
@@ -105,30 +166,79 @@ Pick 2-4 of the most relevant strains by slug from the catalog above. Every reco
   }
 
   const data = await res.json();
-  // Claude's content array isn't guaranteed to be a single text block --
-  // concatenating every text block (rather than blindly indexing [0]) and
-  // then scanning for the JSON span (rather than assuming the whole string
-  // is pure JSON) avoids silently degrading to an empty reply whenever
-  // Claude prefaces its answer with any reasoning text.
   const text = extractAllText(data?.content);
   try {
     const parsed = extractTrailingJson(text);
+    if (!parsed.reply) return null;
+
+    if (parsed.mode === 'clarify') {
+      return { mode: 'clarify', reply: String(parsed.reply), picks: [] };
+    }
+
     const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 4) : [];
-    if (!parsed.reply || recs.length === 0) {
-      // Incomplete JSON (missing reply or no picks) isn't worth showing --
-      // returning null lets the caller fall through to the heuristic path,
-      // which always produces a real reply instead of a blank/partial one.
+    if (recs.length === 0) {
+      // Claimed "recommend" but gave nothing to show -- not worth
+      // rendering as a real recommendation, fall through to heuristic.
       return null;
     }
     return {
+      mode: 'recommend',
       reply: String(parsed.reply),
-      slugs: recs.map((r: any) => String(r.slug)),
-      reasons: Object.fromEntries(recs.map((r: any) => [String(r.slug), String(r.reason || '')])),
+      picks: recs.map((r: any) => ({
+        type: String(r.type || 'strain'),
+        slug: String(r.slug),
+        reason: String(r.reason || ''),
+      })),
     };
   } catch (e) {
     console.error('Failed to parse Claude response', e, text);
     return null;
   }
+}
+
+function resolvePick(
+  pick: RawPick,
+  strains: Strain[],
+  concentrates: Concentrate[],
+  edibles: Edible[]
+): ResolvedPick | null {
+  if (pick.type === 'concentrate') {
+    const c = concentrates.find((x) => x.slug === pick.slug);
+    if (!c) return null;
+    return {
+      type: 'concentrate',
+      id: c.id,
+      slug: c.slug,
+      name: c.name,
+      subtitle: [c.category, c.typical_thc_range].filter(Boolean).join(' · '),
+      reason: pick.reason,
+      href: `/concentrates/${c.slug}`,
+    };
+  }
+  if (pick.type === 'edible') {
+    const e = edibles.find((x) => x.slug === pick.slug);
+    if (!e) return null;
+    return {
+      type: 'edible',
+      id: e.id,
+      slug: e.slug,
+      name: e.name,
+      subtitle: [e.category, e.dosage_mg != null ? `${e.dosage_mg}mg THC` : null].filter(Boolean).join(' · '),
+      reason: pick.reason,
+      href: `/edibles/${e.slug}`,
+    };
+  }
+  const s = strains.find((x) => x.slug === pick.slug);
+  if (!s) return null;
+  return {
+    type: 'strain',
+    id: s.id,
+    slug: s.slug,
+    name: s.name,
+    subtitle: `${s.type} · THC ${s.thc}% · CBD ${s.cbd}%`,
+    reason: pick.reason,
+    href: `/strains/${s.slug}`,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -142,22 +252,24 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createServerReadClient();
-    const { data: strainRows, error } = await supabase.from('strains').select('*');
-    if (error) throw error;
+    const [{ data: strainRows, error: strainErr }, { data: concentrateRows }, { data: edibleRows }] =
+      await Promise.all([
+        supabase.from('strains').select('*'),
+        supabase.from('concentrates').select('*'),
+        supabase.from('edibles').select('*'),
+      ]);
+    if (strainErr) throw strainErr;
     const strains = (strainRows || []).map(mapRow);
+    const concentrates = (concentrateRows || []) as Concentrate[];
+    const edibles = (edibleRows || []) as Edible[];
 
     // Personalized recommendations are a Canopy+ perk (see /pricing) -- a
     // signed-in free user still gets a great answer, just not one that
-    // references their own rating history. Gating here is what actually
-    // makes free vs. Canopy+ feel different, instead of the promised perk
-    // silently applying to everyone regardless of membership.
+    // references their own rating history.
     const user = await getUserFromRequest(req);
     let historyDigest: string | null = null;
     let dislikedStrainIds = new Set<string>();
     if (user) {
-      // profiles is RLS-locked to each user's own row via auth.uid(), which
-      // this plain anon-key server client has no session for -- only the
-      // admin client can actually read it here.
       const admin = createAdminClient();
       const { data: profile } = admin
         ? await admin.from('profiles').select('member_tier').eq('id', user.id).maybeSingle()
@@ -181,58 +293,88 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let mode: 'clarify' | 'recommend' = 'recommend';
     let reply = '';
-    let picked: Strain[] = [];
     let poweredBy: 'ai' | 'heuristic' = 'heuristic';
-    let reasons: Record<string, string> = {};
+    let resolvedPicks: ResolvedPick[] = [];
 
-    const aiResult = await callClaude(message, history, strains, historyDigest);
+    const aiResult = await callClaude(message, history, strains, concentrates, edibles, historyDigest);
     if (aiResult) {
       poweredBy = 'ai';
+      mode = aiResult.mode;
       reply = aiResult.reply;
-      picked = aiResult.slugs
-        .map((slug: string) => strains.find((s) => s.slug === slug))
-        .filter(Boolean) as Strain[];
-      reasons = aiResult.reasons || {};
-      if (picked.length === 0) picked = heuristicRecommend(message, strains);
+      if (mode === 'recommend') {
+        resolvedPicks = aiResult.picks
+          .map((p) => resolvePick(p, strains, concentrates, edibles))
+          .filter((p): p is ResolvedPick => p !== null);
+        if (resolvedPicks.length === 0) {
+          // AI said "recommend" but every pick failed to resolve against
+          // the real catalogs (bad slug, etc) -- fall back rather than
+          // show an empty result.
+          mode = 'recommend';
+          poweredBy = 'heuristic';
+          const pool = dislikedStrainIds.size > 0 ? strains.filter((s) => !dislikedStrainIds.has(s.id)) : strains;
+          const picked = heuristicRecommend(message, pool.length >= 4 ? pool : strains);
+          reply = heuristicReply(message, picked);
+          resolvedPicks = picked.map((s) => ({
+            type: 'strain',
+            id: s.id,
+            slug: s.slug,
+            name: s.name,
+            subtitle: `${s.type} · THC ${s.thc}% · CBD ${s.cbd}%`,
+            reason: reasonForMatch(s, message),
+            href: `/strains/${s.slug}`,
+          }));
+        }
+      }
     } else {
-      // Heuristic fallback also respects personalization -- skip strains
-      // this person has already rated 2 stars or below when there's a
-      // decent alternative pool to pick from instead.
+      // No Claude API key, or the call failed -- the heuristic fallback
+      // doesn't do the clarify step (it's not conversational), it just
+      // gives its best strain-only match immediately.
+      mode = 'recommend';
       const pool = dislikedStrainIds.size > 0 ? strains.filter((s) => !dislikedStrainIds.has(s.id)) : strains;
-      picked = heuristicRecommend(message, pool.length >= 4 ? pool : strains);
+      const picked = heuristicRecommend(message, pool.length >= 4 ? pool : strains);
       reply = heuristicReply(message, picked);
+      resolvedPicks = picked.map((s) => ({
+        type: 'strain',
+        id: s.id,
+        slug: s.slug,
+        name: s.name,
+        subtitle: `${s.type} · THC ${s.thc}% · CBD ${s.cbd}%`,
+        reason: reasonForMatch(s, message),
+        href: `/strains/${s.slug}`,
+      }));
     }
 
-    if (Object.keys(reasons).length === 0) {
-      reasons = Object.fromEntries(picked.map((s) => [s.slug, reasonForMatch(s, message)]));
-    }
-
-    // Look up which approved dispensaries carry these strains -- scoped to
-    // the shopper's confirmed state (see lib/shopperState.ts). Cannabis
-    // can't cross state lines, so "where to get this" must always be
-    // limited to where the shopper actually is, not just wherever happens
-    // to stock the strain.
-    const strainIds = picked.map((p) => p.id);
+    // Look up which approved, in-stock dispensaries carry each pick --
+    // scoped to the shopper's confirmed state (see lib/shopperState.ts).
+    // Cannabis can't cross state lines, so "where to get this" must always
+    // be limited to where the shopper actually is. Also newly enforcing
+    // in_stock=true here, which the old flower-only version of this query
+    // never did -- no point pointing someone at something they can't
+    // actually buy right now.
     const shopperState = await getShopperState();
-    let availability: Record<string, { name: string; slug: string; price: number | null; city: string; state: string }[]> = {};
+    const availability: Record<string, AvailabilityItem[]> = {};
 
-    if (strainIds.length > 0) {
-      let productsQuery = supabase
+    async function fillAvailability(column: 'strain_id' | 'concentrate_id' | 'edible_id', idToSlug: Map<string, string>) {
+      const ids = Array.from(idToSlug.keys());
+      if (ids.length === 0) return;
+      let q = supabase
         .from('products')
-        .select('strain_id, price, dispensaries!inner(id, name, slug, city, state, status)')
-        .in('strain_id', strainIds)
-        .eq('category', 'flower')
+        .select(`${column}, price, dispensaries!inner(name, slug, city, state, status)`)
+        .in(column, ids)
+        .eq('in_stock', true)
         .eq('dispensaries.status', 'approved');
-      if (shopperState) productsQuery = productsQuery.eq('dispensaries.state', shopperState);
-      const { data: products } = await productsQuery;
-
-      for (const row of products || []) {
+      if (column === 'strain_id') q = q.eq('category', 'flower');
+      if (shopperState) q = q.eq('dispensaries.state', shopperState);
+      const { data } = await q;
+      for (const row of data || []) {
         const disp: any = (row as any).dispensaries;
-        const strain = picked.find((p) => p.id === (row as any).strain_id);
-        if (!strain || !disp) continue;
-        if (!availability[strain.slug]) availability[strain.slug] = [];
-        availability[strain.slug].push({
+        const id = (row as any)[column];
+        const slug = idToSlug.get(id);
+        if (!slug || !disp) continue;
+        if (!availability[slug]) availability[slug] = [];
+        availability[slug].push({
           name: disp.name,
           slug: disp.slug,
           price: (row as any).price,
@@ -242,6 +384,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (mode === 'recommend' && resolvedPicks.length > 0) {
+      await Promise.all([
+        fillAvailability('strain_id', new Map(resolvedPicks.filter((p) => p.type === 'strain').map((p) => [p.id, p.slug]))),
+        fillAvailability(
+          'concentrate_id',
+          new Map(resolvedPicks.filter((p) => p.type === 'concentrate').map((p) => [p.id, p.slug]))
+        ),
+        fillAvailability('edible_id', new Map(resolvedPicks.filter((p) => p.type === 'edible').map((p) => [p.id, p.slug]))),
+      ]);
+    }
+
     // Log the query for the Industry Insights page. Awaited (not
     // fire-and-forget) since serverless functions don't guarantee work
     // continues after the response is sent -- but failures here should
@@ -249,18 +402,25 @@ export async function POST(req: NextRequest) {
     try {
       await supabase
         .from('search_logs')
-        .insert({ query: message, matched_slugs: picked.map((p) => p.slug) });
+        .insert({ query: message, matched_slugs: resolvedPicks.map((p) => p.slug) });
     } catch (logErr) {
       console.error('search log insert failed', logErr);
     }
 
     return NextResponse.json({
+      mode,
       reply,
       poweredBy,
-      strains: picked,
-      availability,
-      reasons,
       personalized: !!historyDigest,
+      picks: resolvedPicks.map((p) => ({
+        type: p.type,
+        slug: p.slug,
+        name: p.name,
+        subtitle: p.subtitle,
+        reason: p.reason,
+        href: p.href,
+        availability: availability[p.slug] || [],
+      })),
     });
   } catch (err: any) {
     console.error('assistant route error', err);

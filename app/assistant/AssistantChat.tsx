@@ -3,9 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import TypeBadge from '@/components/TypeBadge';
 import { createClient } from '@/lib/supabaseClient';
-import { Strain } from '@/lib/types';
 
 interface Availability {
   name: string;
@@ -15,16 +13,34 @@ interface Availability {
   state: string;
 }
 
+// One shape for any kind of pick (strain / concentrate / edible) -- the
+// server pre-formats the subtitle and href for each type so the client
+// doesn't need three separate card layouts or type-specific field lookups.
+interface Pick {
+  type: 'strain' | 'concentrate' | 'edible';
+  slug: string;
+  name: string;
+  subtitle: string;
+  reason: string;
+  href: string;
+  availability: Availability[];
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  strains?: Strain[];
-  availability?: Record<string, Availability[]>;
+  mode?: 'clarify' | 'recommend';
+  picks?: Pick[];
   poweredBy?: 'ai' | 'heuristic';
-  reasons?: Record<string, string>;
   personalized?: boolean;
 }
+
+const TYPE_LABEL: Record<Pick['type'], string> = {
+  strain: 'Flower',
+  concentrate: 'Concentrate',
+  edible: 'Edible / Tincture / Topical',
+};
 
 const SUGGESTIONS = [
   'Something to help me sleep',
@@ -78,10 +94,9 @@ export default function AssistantChat() {
           id: crypto.randomUUID(),
           role: 'assistant',
           content: data.reply,
-          strains: data.strains,
-          availability: data.availability,
+          mode: data.mode,
+          picks: data.picks,
           poweredBy: data.poweredBy,
-          reasons: data.reasons,
           personalized: data.personalized,
         },
       ]);
@@ -128,25 +143,23 @@ export default function AssistantChat() {
                 <p className="mt-1 text-[11px] text-canopy-green">✨ Tuned to your past ratings</p>
               )}
 
-              {m.strains && m.strains.length > 0 && (
+              {m.picks && m.picks.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  {m.strains.map((s) => (
-                    <div key={s.id} className="rounded-xl border border-canopy-border bg-canopy-bg p-3">
+                  {m.picks.map((p) => (
+                    <div key={`${p.type}:${p.slug}`} className="rounded-xl border border-canopy-border bg-canopy-bg p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <Link href={`/strains/${s.slug}`} className="font-semibold hover:text-canopy-green">
-                          {s.name}
+                        <Link href={p.href} className="font-semibold hover:text-canopy-green">
+                          {p.name}
                         </Link>
-                        <TypeBadge type={s.type} />
+                        <span className="rounded-full border border-canopy-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-canopy-muted">
+                          {TYPE_LABEL[p.type]}
+                        </span>
                       </div>
-                      <p className="mt-1 text-xs text-canopy-muted">
-                        THC {s.thc}% · CBD {s.cbd}% · {s.effects.slice(0, 3).join(', ')}
-                      </p>
-                      {m.reasons?.[s.slug] && (
-                        <p className="mt-1 text-[11px] italic text-canopy-green">→ {m.reasons[s.slug]}</p>
-                      )}
-                      {m.availability?.[s.slug] && m.availability[s.slug].length > 0 && (
+                      <p className="mt-1 text-xs text-canopy-muted">{p.subtitle}</p>
+                      {p.reason && <p className="mt-1 text-[11px] italic text-canopy-green">→ {p.reason}</p>}
+                      {p.availability.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {m.availability[s.slug].slice(0, 3).map((a) => (
+                          {p.availability.slice(0, 3).map((a) => (
                             <Link
                               key={a.slug}
                               href={`/dispensaries/${a.slug}`}
@@ -156,6 +169,10 @@ export default function AssistantChat() {
                             </Link>
                           ))}
                         </div>
+                      ) : (
+                        <p className="mt-1.5 text-[11px] text-canopy-muted">
+                          Not currently in stock at a dispensary in your state.
+                        </p>
                       )}
                     </div>
                   ))}
