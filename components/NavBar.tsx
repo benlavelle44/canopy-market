@@ -101,6 +101,7 @@ export default function NavBar() {
     { href: '/community', label: 'Community' },
     { href: '/learn', label: 'Learn' },
     { href: '/insights', label: 'Insights' },
+    { href: '/merch', label: 'Merch' },
     { href: '/pricing', label: 'Pricing' },
     { href: '/legal', label: 'Legal' },
   ];

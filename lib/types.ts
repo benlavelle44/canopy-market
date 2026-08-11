@@ -315,3 +315,68 @@ export interface LeaderboardEntry {
   review_count: number;
   referral_count: number;
 }
+
+// Print-on-demand merch (Printful), separate from the cannabis product
+// catalog above -- these are ordinary physical goods, so unlike
+// dispensary_products/products they're sold and shipped directly through
+// Canopy's own Stripe checkout rather than routed to a third-party seller.
+export type MerchProductType = 'tshirt' | 'hoodie' | 'hat' | 'sticker';
+
+export const MERCH_PRODUCT_TYPE_LABELS: Record<MerchProductType, string> = {
+  tshirt: 'T-Shirt',
+  hoodie: 'Hoodie',
+  hat: 'Hat',
+  sticker: 'Sticker',
+};
+
+export interface MerchProduct {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  design_slug: string;
+  product_type: MerchProductType;
+  image_url: string | null;
+  printful_sync_product_id: number | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface MerchVariant {
+  id: string;
+  product_id: string;
+  size: string | null;
+  color: string | null;
+  price_cents: number;
+  printful_sync_variant_id: number | null;
+  printful_variant_id: number | null;
+  in_stock: boolean;
+  created_at: string;
+}
+
+export type MerchOrderStatus = 'pending' | 'submitted' | 'fulfilled' | 'failed' | 'canceled';
+
+export interface MerchOrder {
+  id: string;
+  user_id: string | null;
+  stripe_session_id: string;
+  printful_order_id: number | null;
+  status: MerchOrderStatus;
+  customer_email: string | null;
+  shipping_name: string | null;
+  shipping_address: Record<string, any> | null;
+  subtotal_cents: number;
+  shipping_cents: number;
+  total_cents: number;
+  fulfillment_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MerchOrderItem {
+  id: string;
+  order_id: string;
+  variant_id: string;
+  quantity: number;
+  unit_price_cents: number;
+}

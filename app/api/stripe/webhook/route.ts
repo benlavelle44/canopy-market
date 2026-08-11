@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
 import { createAdminClient } from '@/lib/supabaseAdmin';
+import { createPrintfulOrder } from '@/lib/printful';
 
 export const runtime = 'nodejs';
 
@@ -57,6 +58,100 @@ export async function POST(req: NextRequest) {
               .eq('id', userId);
             // Welcome bonus for joining Canopy+
             await admin.rpc('increment_points', { target_user: userId, amount: 10 });
+          }
+        } else if (kind === 'merch') {
+          // Physical merch order -- record it, then submit to Printful for
+          // fulfillment. Draft (unconfirmed) by default in Printful; see
+          // lib/printful.ts for the AUTO_CONFIRM_PRINTFUL_ORDERS gate.
+          const variantId = session.metadata?.variantId;
+          const quantity = Number(session.metadata?.quantity || 1);
+          const userId = session.metadata?.userId || null;
+
+          if (variantId) {
+            const shipping = session.shipping_details || session.shipping || null;
+            const address = shipping?.address || null;
+            const totalCents = session.amount_total ?? 0;
+
+            const { data: order, error: orderErr } = await admin
+              .from('merch_orders')
+              .insert({
+                user_id: userId || null,
+                stripe_session_id: session.id,
+                status: 'pending',
+                customer_email: session.customer_details?.email || session.customer_email || null,
+                shipping_name: shipping?.name || null,
+                shipping_address: address,
+                subtotal_cents: totalCents,
+                shipping_cents: 0,
+                total_cents: totalCents,
+              })
+              .select('id')
+              .single();
+
+            if (orderErr) {
+              console.error('merch_orders insert error', orderErr);
+            } else if (order) {
+              const { data: variant } = await admin
+                .from('merch_variants')
+                .select('price_cents, printful_sync_variant_id')
+                .eq('id', variantId)
+                .maybeSingle();
+
+              await admin.from('merch_order_items').insert({
+                order_id: order.id,
+                variant_id: variantId,
+                quantity,
+                unit_price_cents: variant?.price_cents || 0,
+              });
+
+              if (variant?.printful_sync_variant_id && address) {
+                try {
+                  const printfulOrder = await createPrintfulOrder({
+                    externalId: order.id,
+                    recipient: {
+                      name: shipping?.name || session.customer_details?.name || 'Customer',
+                      address1: address.line1 || '',
+                      address2: address.line2 || undefined,
+                      city: address.city || '',
+                      state_code: address.state || '',
+                      country_code: address.country || 'US',
+                      zip: address.postal_code || '',
+                      email: session.customer_details?.email || undefined,
+                    },
+                    items: [{ sync_variant_id: variant.printful_sync_variant_id, quantity }],
+                  });
+
+                  if (printfulOrder) {
+                    await admin
+                      .from('merch_orders')
+                      .update({ status: 'submitted', printful_order_id: printfulOrder.id })
+                      .eq('id', order.id);
+                  } else {
+                    await admin
+                      .from('merch_orders')
+                      .update({
+                        status: 'failed',
+                        fulfillment_error: 'Printful is not configured (missing PRINTFUL_API_KEY).',
+                      })
+                      .eq('id', order.id);
+                  }
+                } catch (err: any) {
+                  console.error('createPrintfulOrder error', err);
+                  await admin
+                    .from('merch_orders')
+                    .update({ status: 'failed', fulfillment_error: err.message || 'Printful order submission failed.' })
+                    .eq('id', order.id);
+                }
+              } else {
+                await admin
+                  .from('merch_orders')
+                  .update({
+                    status: 'failed',
+                    fulfillment_error: 'Missing shipping address or Printful variant mapping.',
+                  })
+                  .eq('id', order.id);
+              }
+            }
           }
         } else {
           const dispensaryId = session.metadata?.dispensaryId;
