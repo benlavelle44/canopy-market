@@ -62,7 +62,7 @@ const DESIGN_MATCHERS: [RegExp, string, string][] = [
   [/hangin/i, 'just-hangin-out', '/kief/merch/kief-just-hangin-out.png'],
   [/whoo\s*knows|knows\s*your\s*strain/i, 'whoo-knows-your-strain', '/kief/merch/kief-whoo-knows-your-strain.png'],
   [/knows\s*what\s*time/i, 'knows-what-time-it-is', '/kief/merch/kief-knows-what-time-it-is.png'],
-  [/buds\s*are\s*for\s*you/i, 'these-buds-are-for-you', '/kief/merch/kief-these-buds-are-for-you.png'],
+  [/these\s*buds/i, 'these-buds-are-for-you', '/kief/merch/kief-these-buds-are-for-you.png'],
   [/too\s*hot|give\s*a\s*hoot/i, 'too-hot-to-give-a-hoot', '/kief/merch/kief-too-hot-to-give-a-hoot.png'],
 ];
 
@@ -196,7 +196,19 @@ export async function POST(req: NextRequest) {
           })
           .eq('id', productId);
       } else {
-        slug = slugify(sp.name);
+        // Printful lets Ben create multiple products with the same name
+        // (e.g. two "Kief Hoodie" listings while iterating) -- slugify()
+        // alone would collide on the page URL and silently drop the
+        // second one on insert. Check for a taken slug and disambiguate
+        // with the Printful product id instead of failing quietly.
+        const baseSlug = slugify(sp.name);
+        const { data: slugTaken } = await admin
+          .from('merch_products')
+          .select('id')
+          .eq('slug', baseSlug)
+          .maybeSingle();
+        slug = slugTaken ? `${baseSlug}-${sp.id}` : baseSlug;
+
         const { data: inserted, error: insertErr } = await admin
           .from('merch_products')
           .insert({
