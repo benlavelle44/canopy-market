@@ -93,9 +93,14 @@ export default function AdminPhotosClient() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-groovy text-3xl text-gradient-trippy">Grow Photo Review Queue</h1>
-        <Link href="/admin/strains" className="text-xs text-canopy-green hover:underline">
-          Strain Review Queue →
-        </Link>
+        <div className="flex gap-3 text-xs">
+          <Link href="/admin/strains" className="text-canopy-green hover:underline">
+            Strain Review Queue →
+          </Link>
+          <Link href="/admin/merch" className="text-canopy-green hover:underline">
+            Merch Sync →
+          </Link>
+        </div>
       </div>
       <p className="mb-6 text-sm text-canopy-muted">
         Community-submitted grow photos waiting on verification before they appear on strain pages.

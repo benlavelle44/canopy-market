@@ -90,9 +90,14 @@ export default function AdminStrainsClient() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-groovy text-3xl text-gradient-trippy">Strain Review Queue</h1>
-        <Link href="/admin/photos" className="text-xs text-canopy-green hover:underline">
-          Grow Photo Queue →
-        </Link>
+        <div className="flex gap-3 text-xs">
+          <Link href="/admin/photos" className="text-canopy-green hover:underline">
+            Grow Photo Queue →
+          </Link>
+          <Link href="/admin/merch" className="text-canopy-green hover:underline">
+            Merch Sync →
+          </Link>
+        </div>
       </div>
       <p className="mb-6 text-sm text-canopy-muted">
         AI Strain Finder submissions waiting on verification before they appear in general browse/search.
