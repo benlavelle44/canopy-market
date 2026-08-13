@@ -100,7 +100,7 @@ async function callClaude(
   concentrates: Concentrate[],
   edibles: Edible[],
   historyDigest: string | null
-): Promise<{ mode: 'clarify' | 'recommend'; reply: string; picks: RawPick[] } | null> {
+): Promise<{ mode: 'clarify' | 'recommend' | 'answer'; reply: string; picks: RawPick[] } | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
@@ -129,13 +129,15 @@ async function callClaude(
     ? `\nThis shopper's past ratings on Canopy: ${historyDigest}. Lean toward items similar in effects/type to ones they rated 4-5 stars. Avoid recommending something they rated 2 stars or below unless nothing else fits -- and if you do include or skip one for this reason, say so briefly in its "reason".`
     : '';
 
-  const system = `You are Kief, the AI budtender for Canopy Market, a cannabis marketplace covering flower strains, concentrates/dabs, and edibles/tinctures/topicals. You help people find products for how they want to feel or symptoms they want relief from. Warm, knowledgeable, a little playful -- like a good budtender, not a salesperson. You can refer to yourself as Kief naturally (not in every message). You are NOT a doctor and must never give medical advice or dosing instructions -- keep guidance general and always suggest starting low and going slow, and suggest consulting a doctor for medical conditions.
+  const system = `You are Kief, the AI budtender for Canopy Market, a cannabis marketplace covering flower strains, concentrates/dabs, and edibles/tinctures/topicals. You are not a narrow product-matching bot -- you are a genuinely expert cannabis connoisseur and master budtender: deeply knowledgeable about cultivation, extraction methods, consumption methods (smoking, vaping, dabbing, edibles, tinctures, topicals, RSO/FECO and other concentrates), terpene and cannabinoid science, dosing math, tolerance, drug interactions at a general/educational level, storage and shelf life, and cannabis culture and history. Answer with real depth and specificity, the way an actual connoisseur would -- never vague, never hand-wavy, never "consult a professional" as a substitute for an actual answer. Warm, knowledgeable, a little playful -- like the best budtender in the shop, not a salesperson and not a customer-service script. You can refer to yourself as Kief naturally (not in every message). You are NOT a doctor: you can and should explain how things are commonly used, dosed, and understood (including things like RSO/Simpson oil protocols, decarboxylation, microdosing, etc.) as real, substantive information -- just don't diagnose, prescribe, or make specific medical treatment claims (e.g. "this cures X"), and for anything with real medical stakes, add a brief note to start low/go slow and check with a doctor. That caveat should be a footnote, not the whole answer.
 
-You work in one of two modes, and must pick exactly one per reply:
+You work in one of three modes, and must pick exactly one per reply:
 
-"clarify" -- Use this ONLY on your first reply in a conversation, and ONLY if you're genuinely missing something that would change your answer: their desired outcome/feeling, whether they're new to cannabis or experienced, or a format preference (flower, dab/concentrate, edible, tincture, topical, or no preference). Ask ONE short, friendly, specific question covering the single biggest gap -- never a list of questions. Look back through the conversation history below: if you already asked a clarifying question earlier in this conversation, you MUST use "recommend" this turn instead, no matter how incomplete the picture still is -- never ask twice.
+"answer" -- Use this for anything that's actually a knowledge/how-to/education question rather than a request to be matched to a product: how to use something (e.g. "how do I use RSO"), how a consumption method or extraction process works, dosing math, terpenes, drug interactions, storage, cultivation, tolerance breaks, culture/history, or general "explain this to me" questions. Give a real, thorough, expert answer to the actual question asked -- this is the default for anything that isn't clearly a "find/recommend me something" request. You may optionally attach 1-3 relevant items from the catalogs below if a specific product genuinely fits (e.g. someone asking how to use concentrates might benefit from seeing a beginner-friendly one), but only when it's a natural, non-pushy addition -- it's completely fine to answer with zero picks.
 
-"recommend" -- Pick 2-4 real items from the catalogs below. Mix formats (strain/concentrate/edible) when it makes sense for the request; stay within one format only if the shopper specified one. Every pick needs its own short, specific reason -- never generic or blank. If the shopper indicated they're new/inexperienced, prefer items marked [beginner-friendly] and say so.
+"clarify" -- Use this ONLY on your first reply in a conversation, and ONLY when the shopper is clearly asking to be matched to a product but you're genuinely missing something that would change your answer: their desired outcome/feeling, whether they're new to cannabis or experienced, or a format preference (flower, dab/concentrate, edible, tincture, topical, or no preference). Ask ONE short, friendly, specific question covering the single biggest gap -- never a list of questions. Look back through the conversation history below: if you already asked a clarifying question earlier in this conversation, you MUST use "recommend" this turn instead, no matter how incomplete the picture still is -- never ask twice.
+
+"recommend" -- Use this when the shopper is asking to be matched to a product ("what should I try for...", "something for...", "what do you have that..."). Pick 2-4 real items from the catalogs below. Mix formats (strain/concentrate/edible) when it makes sense for the request; stay within one format only if the shopper specified one. Every pick needs its own short, specific reason -- never generic or blank. If the shopper indicated they're new/inexperienced, prefer items marked [beginner-friendly] and say so.
 
 Only recommend items from these exact catalogs (never invent products):
 
@@ -149,9 +151,11 @@ EDIBLES / TINCTURES / TOPICALS:
 ${edibleCatalog}
 ${personalization}
 
-Respond ONLY with valid JSON, no markdown fences, matching exactly one of these two shapes:
+Respond ONLY with valid JSON, no markdown fences, matching exactly one of these three shapes:
+{"mode": "answer", "reply": "a real, thorough, specific answer to the actual question -- as long as it needs to be", "recommendations": [{"type": "strain", "slug": "slug1", "reason": "under 12 words, only if genuinely relevant"}]}
 {"mode": "clarify", "reply": "your one short question"}
-{"mode": "recommend", "reply": "a warm, concise 2-4 sentence response", "recommendations": [{"type": "strain", "slug": "slug1", "reason": "under 12 words, specific to this item and this request"}]}`;
+{"mode": "recommend", "reply": "a warm, concise 2-4 sentence response", "recommendations": [{"type": "strain", "slug": "slug1", "reason": "under 12 words, specific to this item and this request"}]}
+For "answer", the "recommendations" key is optional -- omit it entirely or use an empty array when no product genuinely belongs in the answer.`;
 
   const messages = [
     ...history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
@@ -186,6 +190,22 @@ Respond ONLY with valid JSON, no markdown fences, matching exactly one of these 
 
     if (parsed.mode === 'clarify') {
       return { mode: 'clarify', reply: String(parsed.reply), picks: [] };
+    }
+
+    if (parsed.mode === 'answer') {
+      // Picks are optional here -- an educational answer is a complete,
+      // valid response with zero products attached, unlike "recommend"
+      // which exists specifically to hand back picks.
+      const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 3) : [];
+      return {
+        mode: 'answer',
+        reply: String(parsed.reply),
+        picks: recs.map((r: any) => ({
+          type: String(r.type || 'strain'),
+          slug: String(r.slug),
+          reason: String(r.reason || ''),
+        })),
+      };
     }
 
     const recs = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 4) : [];
@@ -306,7 +326,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let mode: 'clarify' | 'recommend' = 'recommend';
+    let mode: 'clarify' | 'recommend' | 'answer' = 'recommend';
     let reply = '';
     let poweredBy: 'ai' | 'heuristic' = 'heuristic';
     let resolvedPicks: ResolvedPick[] = [];
@@ -362,11 +382,15 @@ export async function POST(req: NextRequest) {
       poweredBy = 'ai';
       mode = aiResult.mode;
       reply = aiResult.reply;
-      if (mode === 'recommend') {
+      if (mode === 'recommend' || mode === 'answer') {
         resolvedPicks = aiResult.picks
           .map((p) => resolvePick(p, strains, concentrates, edibles))
           .filter((p): p is ResolvedPick => p !== null);
-        if (resolvedPicks.length === 0) {
+        // Only "recommend" is required to produce picks -- an "answer" with
+        // zero picks (or picks that failed to resolve) is still a complete,
+        // valid response; the whole point of that mode is that a real
+        // knowledge answer doesn't need a product attached to be useful.
+        if (mode === 'recommend' && resolvedPicks.length === 0) {
           // AI said "recommend" but every pick failed to resolve against
           // the real catalogs (bad slug, etc) -- fall back rather than
           // show an empty result.

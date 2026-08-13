@@ -182,6 +182,7 @@ export async function POST(req: NextRequest) {
       let productId: string;
       let slug: string;
       if (existing) {
+        // Re-syncing a Printful product we already know about.
         productId = existing.id;
         slug = existing.slug;
         await admin
@@ -196,39 +197,53 @@ export async function POST(req: NextRequest) {
           })
           .eq('id', productId);
       } else {
-        // Printful lets Ben create multiple products with the same name
-        // (e.g. two "Kief Hoodie" listings while iterating) -- slugify()
-        // alone would collide on the page URL and silently drop the
-        // second one on insert. Check for a taken slug and disambiguate
-        // with the Printful product id instead of failing quietly.
-        const baseSlug = slugify(sp.name);
-        const { data: slugTaken } = await admin
+        // Ben builds light-garment (black ink) and dark-garment (white ink)
+        // versions of the same design as two separate Printful products
+        // with the identical name, since Printful's "different file per
+        // color" editor has been unreliable for him. Same name = same
+        // logical product on the storefront: fold this product's variants
+        // into the existing row instead of creating a second listing, so
+        // shoppers see one page with the full color range rather than two
+        // near-duplicate "Kief Hoodie" cards.
+        const { data: sibling } = await admin
           .from('merch_products')
-          .select('id')
-          .eq('slug', baseSlug)
-          .maybeSingle();
-        slug = slugTaken ? `${baseSlug}-${sp.id}` : baseSlug;
-
-        const { data: inserted, error: insertErr } = await admin
-          .from('merch_products')
-          .insert({
-            slug,
-            name: sp.name,
-            design_slug: design?.slug || 'wordmark',
-            product_type: productType,
-            image_url: imageUrl,
-            mockup_urls: mockups,
-            printful_sync_product_id: sp.id,
-            active: true,
-          })
           .select('id, slug')
-          .single();
-        if (insertErr || !inserted) {
-          console.error('merch product insert error', insertErr);
-          continue;
+          .eq('name', sp.name)
+          .maybeSingle();
+
+        if (sibling) {
+          productId = sibling.id;
+          slug = sibling.slug;
+        } else {
+          const baseSlug = slugify(sp.name);
+          const { data: slugTaken } = await admin
+            .from('merch_products')
+            .select('id')
+            .eq('slug', baseSlug)
+            .maybeSingle();
+          slug = slugTaken ? `${baseSlug}-${sp.id}` : baseSlug;
+
+          const { data: inserted, error: insertErr } = await admin
+            .from('merch_products')
+            .insert({
+              slug,
+              name: sp.name,
+              design_slug: design?.slug || 'wordmark',
+              product_type: productType,
+              image_url: imageUrl,
+              mockup_urls: mockups,
+              printful_sync_product_id: sp.id,
+              active: true,
+            })
+            .select('id, slug')
+            .single();
+          if (insertErr || !inserted) {
+            console.error('merch product insert error', insertErr);
+            continue;
+          }
+          productId = inserted.id;
+          slug = inserted.slug;
         }
-        productId = inserted.id;
-        slug = inserted.slug;
       }
 
       let variantCount = 0;
