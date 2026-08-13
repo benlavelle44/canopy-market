@@ -59,10 +59,10 @@ export default async function MerchPage() {
               className="flex flex-col justify-between rounded-2xl border border-canopy-border bg-canopy-card p-4 transition hover:border-canopy-green/50"
             >
               <div>
-                <div className="mb-3 aspect-square overflow-hidden rounded-xl bg-canopy-panel">
+                <div className="mb-3 aspect-square overflow-hidden rounded-xl bg-canopy-panel p-4">
                   {p.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={p.image_url} alt={p.name} className="h-full w-full object-contain" loading="lazy" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-4xl">🦉</div>
                   )}

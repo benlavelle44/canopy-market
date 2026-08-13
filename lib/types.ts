@@ -329,6 +329,11 @@ export const MERCH_PRODUCT_TYPE_LABELS: Record<MerchProductType, string> = {
   sticker: 'Sticker',
 };
 
+export interface MerchMockupImage {
+  type: string;
+  url: string;
+}
+
 export interface MerchProduct {
   id: string;
   slug: string;
@@ -337,6 +342,7 @@ export interface MerchProduct {
   design_slug: string;
   product_type: MerchProductType;
   image_url: string | null;
+  mockup_urls: MerchMockupImage[];
   printful_sync_product_id: number | null;
   active: boolean;
   created_at: string;

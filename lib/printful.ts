@@ -27,6 +27,13 @@ export interface PrintfulSyncProduct {
   thumbnail_url: string;
 }
 
+export interface PrintfulSyncVariantFile {
+  id: number;
+  type: string;
+  preview_url?: string;
+  thumbnail_url?: string;
+}
+
 export interface PrintfulSyncVariant {
   id: number;
   external_id: string;
@@ -37,6 +44,7 @@ export interface PrintfulSyncVariant {
   retail_price: string;
   currency: string;
   is_ignored: boolean;
+  files?: PrintfulSyncVariantFile[];
 }
 
 export interface PrintfulSyncProductDetail {

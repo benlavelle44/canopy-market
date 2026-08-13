@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { createAdminClient } from '@/lib/supabaseAdmin';
 import { listSyncProducts, getSyncProduct } from '@/lib/printful';
+import type { PrintfulSyncProductDetail } from '@/lib/printful';
 import type { MerchProductType } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -45,6 +46,50 @@ function inferProductType(name: string): MerchProductType {
     if (re.test(name)) return type;
   }
   return 'tshirt';
+}
+
+// Maps a Printful product name to one of Ben's actual Kief artwork files in
+// public/kief/merch/ -- this is what actually shows as the product photo
+// instead of Printful's on-model mockup, since the mockup is too small/
+// distant to read the graphic. Order matters: more specific phrases first
+// so e.g. "whoo knows your strain" doesn't get caught by a looser "knows"
+// pattern meant for "knows what time it is".
+const DESIGN_MATCHERS: [RegExp, string, string][] = [
+  [/not\s*lost/i, 'not-lost-just-elevated', '/kief/merch/kief-not-lost-just-elevated-white-bg.png'],
+  [/clocked\s*out/i, 'clocked-out-lit-up', '/kief/merch/kief-clocked-out-lit-up.png'],
+  [/fall\s*for\s*better\s*flower/i, 'fall-for-better-flower', '/kief/merch/kief-fall-for-better-flower.png'],
+  [/fally|f[*c]?ckin/i, 'its-fckin-fally', '/kief/merch/kief-its-fckin-fally.png'],
+  [/hangin/i, 'just-hangin-out', '/kief/merch/kief-just-hangin-out.png'],
+  [/whoo\s*knows|knows\s*your\s*strain/i, 'whoo-knows-your-strain', '/kief/merch/kief-whoo-knows-your-strain.png'],
+  [/knows\s*what\s*time/i, 'knows-what-time-it-is', '/kief/merch/kief-knows-what-time-it-is.png'],
+  [/buds\s*are\s*for\s*you/i, 'these-buds-are-for-you', '/kief/merch/kief-these-buds-are-for-you.png'],
+  [/too\s*hot|give\s*a\s*hoot/i, 'too-hot-to-give-a-hoot', '/kief/merch/kief-too-hot-to-give-a-hoot.png'],
+];
+
+function matchDesign(productName: string): { slug: string; image: string } | null {
+  for (const [re, slug, image] of DESIGN_MATCHERS) {
+    if (re.test(productName)) return { slug, image };
+  }
+  return null;
+}
+
+// Pulls a representative set of mockup images (front/back, on-model) off the
+// first variant that has any files, so the product page can show them
+// alongside the graphic-only image above. Deduped by URL since Printful
+// often repeats the same preview across variants/placements.
+function extractMockups(detail: PrintfulSyncProductDetail): { type: string; url: string }[] {
+  const seen = new Set<string>();
+  const mockups: { type: string; url: string }[] = [];
+  for (const v of detail.sync_variants) {
+    for (const f of v.files || []) {
+      const url = f.preview_url || f.thumbnail_url;
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      mockups.push({ type: f.type, url });
+    }
+    if (mockups.length > 0) break; // one variant's worth is enough
+  }
+  return mockups.slice(0, 6);
 }
 
 function slugify(name: string): string {
@@ -120,6 +165,13 @@ export async function POST(req: NextRequest) {
       if (!detail) continue;
 
       const productType = inferProductType(sp.name);
+      const design = matchDesign(sp.name);
+      const mockups = extractMockups(detail);
+      // Graphic-only art wins for the main product photo when we recognize
+      // the design (that's what's actually legible at thumbnail size);
+      // falls back to Printful's on-model mockup for anything we can't
+      // match, e.g. the wordmark-only hat/beanie.
+      const imageUrl = design?.image || sp.thumbnail_url || null;
 
       const { data: existing } = await admin
         .from('merch_products')
@@ -136,7 +188,9 @@ export async function POST(req: NextRequest) {
           .from('merch_products')
           .update({
             name: sp.name,
-            image_url: sp.thumbnail_url || null,
+            image_url: imageUrl,
+            mockup_urls: mockups,
+            design_slug: design?.slug || 'wordmark',
             product_type: productType,
             active: true,
           })
@@ -148,9 +202,10 @@ export async function POST(req: NextRequest) {
           .insert({
             slug,
             name: sp.name,
-            design_slug: 'not-lost-just-elevated',
+            design_slug: design?.slug || 'wordmark',
             product_type: productType,
-            image_url: sp.thumbnail_url || null,
+            image_url: imageUrl,
+            mockup_urls: mockups,
             printful_sync_product_id: sp.id,
             active: true,
           })

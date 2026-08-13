@@ -5,6 +5,7 @@ import { createServerReadClient } from '@/lib/supabaseServer';
 import { MerchProduct, MerchVariant, MERCH_PRODUCT_TYPE_LABELS } from '@/lib/types';
 import { SITE_URL } from '@/lib/siteConfig';
 import MerchBuyBox from '@/components/MerchBuyBox';
+import MerchGallery from '@/components/MerchGallery';
 
 export const revalidate = 0;
 
@@ -49,14 +50,7 @@ export default async function MerchProductPage({ params }: { params: Promise<{ s
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="grid gap-8 md:grid-cols-2">
-        <div className="aspect-square overflow-hidden rounded-2xl bg-canopy-panel">
-          {product.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-6xl">🦉</div>
-          )}
-        </div>
+        <MerchGallery name={product.name} mainImage={product.image_url} mockups={product.mockup_urls} />
         <div>
           <span className="mb-2 inline-block rounded-full border border-canopy-border px-2.5 py-0.5 text-xs text-canopy-muted">
             {MERCH_PRODUCT_TYPE_LABELS[product.product_type]}
