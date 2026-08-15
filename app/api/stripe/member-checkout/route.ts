@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { getStripe, MEMBER_PRICE_ENV } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
+
+// userId used to come straight from the request body -- anyone could POST
+// someone else's userId and have Canopy+ attached to that account (paid for
+// by whoever hit the endpoint, but attributed to a user who never
+// authorized it). Now derived from the caller's own auth token, same
+// pattern as app/api/strains/review/route.ts.
+async function getUserFromRequest(req: NextRequest) {
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user) return null;
+  return data.user;
+}
 
 // Consumer "Canopy+" subscription checkout ($5/mo). Separate from the
 // dispensary billing route -- this charges a person, not a business, so the
@@ -20,13 +37,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const userId: string = body?.userId;
-    const email: string | undefined = body?.email;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
+    const user = await getUserFromRequest(req);
+    if (!user) return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
+    const userId = user.id;
 
     const priceId = process.env[MEMBER_PRICE_ENV];
     if (!priceId) {
@@ -41,7 +54,7 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      customer_email: email,
+      customer_email: user.email || undefined,
       success_url: `${origin}/account?upgraded=1`,
       cancel_url: `${origin}/pricing`,
       metadata: { kind: 'member', userId },

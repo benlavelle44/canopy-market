@@ -236,10 +236,16 @@ export default function DashboardClient() {
   };
 
   const upgrade = async (dispensaryId: string, tier: 'pro' | 'verified') => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setNotice('You need to be signed in.');
+      return;
+    }
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ dispensaryId, tier, email: userEmail }),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ dispensaryId, tier }),
     });
     const data = await res.json();
     if (data.url) {

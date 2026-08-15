@@ -76,10 +76,16 @@ export default function PricingPage() {
       window.location.href = '/signup';
       return;
     }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      window.location.href = '/login';
+      return;
+    }
     const res = await fetch('/api/stripe/member-checkout', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId, email }),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
     });
     const data = await res.json();
     if (data.url) {
@@ -97,10 +103,16 @@ export default function PricingPage() {
     setBuyingPack(pack);
     setCreditNotice('');
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
       const res = await fetch('/api/stripe/credits-checkout', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ userId, email, pack }),
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ pack }),
       });
       const data = await res.json();
       if (data.url) {

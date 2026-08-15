@@ -84,10 +84,16 @@ function AccountInner() {
 
   const upgrade = async () => {
     if (!userId || !profile) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setNotice('You need to be signed in.');
+      return;
+    }
     const res = await fetch('/api/stripe/member-checkout', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userId, email: profile.email }),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
     });
     const data = await res.json();
     if (data.url) {

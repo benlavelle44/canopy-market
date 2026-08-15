@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabaseConfig';
 import { getStripe, CREDIT_PACK_PRICE_ENV } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
+
+// userId used to come straight from the request body -- anyone could POST
+// someone else's userId and have credits attributed to that account. Now
+// derived from the caller's own auth token, same pattern as
+// app/api/strains/review/route.ts.
+async function getUserFromRequest(req: NextRequest) {
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const supabase = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user) return null;
+  return data.user;
+}
 
 // One-time AI budtender credit pack checkout ($2.99/5 or $6.99/15).
 // Separate from member-checkout (subscription) and dispensary checkout
@@ -22,14 +38,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const userId: string = body?.userId;
-    const email: string | undefined = body?.email;
-    const pack: '5' | '15' = body?.pack === '15' ? '15' : '5';
+    const user = await getUserFromRequest(req);
+    if (!user) return NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
+    const userId = user.id;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
+    const body = await req.json();
+    const pack: '5' | '15' = body?.pack === '15' ? '15' : '5';
 
     const priceEnv = CREDIT_PACK_PRICE_ENV[pack];
     const priceId = process.env[priceEnv];
@@ -48,7 +62,7 @@ export async function POST(req: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [{ price: priceId, quantity: 1 }],
-      customer_email: email,
+      customer_email: user.email || undefined,
       success_url: `${origin}/assistant?credits_added=${credits}`,
       cancel_url: `${origin}/pricing`,
       metadata: { kind: 'credits', userId, credits: String(credits) },
