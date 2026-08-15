@@ -102,6 +102,7 @@ export default function NavBar() {
     { href: '/learn', label: 'Learn' },
     { href: '/insights', label: 'Insights' },
     { href: '/merch', label: 'Merch' },
+    { href: '/whats-new', label: "What's New" },
     { href: '/pricing', label: 'Pricing' },
     { href: '/legal', label: 'Legal' },
   ];

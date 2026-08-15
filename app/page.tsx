@@ -4,6 +4,7 @@ import { getShopperState } from '@/lib/shopperState';
 import { Strain, Dispensary } from '@/lib/types';
 import StrainCard from '@/components/StrainCard';
 import DispensaryCard from '@/components/DispensaryCard';
+import HomePromoBanner from '@/components/HomePromoBanner';
 
 export const revalidate = 0;
 
@@ -51,6 +52,7 @@ export default async function HomePage() {
 
   return (
     <div>
+      <HomePromoBanner />
       <section className="relative overflow-hidden border-b border-canopy-border">
         <div className="absolute inset-0 bg-gradient-to-br from-canopy-green/10 via-transparent to-canopy-purple/10" />
         <div className="relative mx-auto max-w-6xl px-4 py-20 text-center">
