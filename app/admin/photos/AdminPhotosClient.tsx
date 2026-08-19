@@ -100,6 +100,9 @@ export default function AdminPhotosClient() {
           <Link href="/admin/merch" className="text-canopy-green hover:underline">
             Merch Sync →
           </Link>
+          <Link href="/admin/learn" className="text-canopy-green hover:underline">
+            Learn Review →
+          </Link>
         </div>
       </div>
       <p className="mb-6 text-sm text-canopy-muted">
