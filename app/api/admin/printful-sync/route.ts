@@ -166,12 +166,21 @@ export async function POST(req: NextRequest) {
 
       const productType = inferProductType(sp.name);
       const design = matchDesign(sp.name);
-      const mockups = extractMockups(detail);
-      // Graphic-only art wins for the main product photo when we recognize
-      // the design (that's what's actually legible at thumbnail size);
-      // falls back to Printful's on-model mockup for anything we can't
-      // match, e.g. the wordmark-only hat/beanie.
-      const imageUrl = design?.image || sp.thumbnail_url || null;
+      const printfulMockups = extractMockups(detail);
+      // The main product photo has to actually look like the thing being
+      // sold -- a garment WITH the design printed on it, not the bare
+      // artwork floating on nothing. Printful's own product thumbnail is
+      // that composited shot (garment + print), so it wins as the primary
+      // image whenever Printful has generated one; the graphic-only art
+      // only steps in as a fallback if Printful genuinely has nothing
+      // (e.g. this sync ran before any mockup rendered). The clean graphic
+      // is still available -- just relegated to the gallery, first in
+      // line, for anyone who wants a close look at the design itself
+      // rather than the product photo.
+      const imageUrl = sp.thumbnail_url || design?.image || null;
+      const mockups = design
+        ? [{ type: 'graphic', url: design.image }, ...printfulMockups]
+        : printfulMockups;
 
       const { data: existing } = await admin
         .from('merch_products')

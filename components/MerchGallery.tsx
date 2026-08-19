@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { MerchMockupImage } from '@/lib/types';
 
 const MOCKUP_LABELS: Record<string, string> = {
+  graphic: 'Full design',
   default: 'Front (mockup)',
   front: 'Front (mockup)',
   back: 'Back (mockup)',
@@ -12,10 +13,10 @@ const MOCKUP_LABELS: Record<string, string> = {
   embroidery_back: 'Back (mockup)',
 };
 
-// Graphic-only art is the main image (what actually sells the design), with
-// Printful's on-model mockups available as a secondary strip so shoppers can
-// still see fit/scale/back placement. Defaults back to the main graphic if
-// there are no mockups to show.
+// Main image is the actual product photo -- the garment with the design
+// printed on it, so it's obvious what you're buying. The clean graphic and
+// any extra mockup angles (back print, etc.) live in the strip below so
+// shoppers who want a close look at the art can still get one.
 export default function MerchGallery({
   name,
   mainImage,
@@ -26,6 +27,7 @@ export default function MerchGallery({
   mockups: MerchMockupImage[];
 }) {
   const [active, setActive] = useState(mainImage);
+  const thumbs = mockups.filter((m) => m.url !== mainImage);
 
   return (
     <div>
@@ -38,7 +40,7 @@ export default function MerchGallery({
         )}
       </div>
 
-      {mockups.length > 0 && (
+      {thumbs.length > 0 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {mainImage && (
             <button
@@ -48,10 +50,10 @@ export default function MerchGallery({
               }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mainImage} alt="Graphic" className="h-16 w-16 object-contain" />
+              <img src={mainImage} alt="Product" className="h-16 w-16 object-contain" />
             </button>
           )}
-          {mockups.map((m) => (
+          {thumbs.map((m) => (
             <button
               key={m.url}
               onClick={() => setActive(m.url)}
