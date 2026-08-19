@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface Slide {
   badge: string;
-  icon: string;
+  icon: string | { src: string; alt: string };
   title: string;
   subtitle: string;
   cta: string;
@@ -23,7 +24,7 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     badge: 'NEW',
-    icon: '🦉',
+    icon: { src: '/kief/kief-wave.png', alt: 'Kief' },
     title: 'Meet Kief, your AI budtender',
     subtitle: 'Tell him how you want to feel — he\'ll match you to real strains, dabs, and edibles.',
     cta: 'Ask Kief',
@@ -79,7 +80,19 @@ export default function HomePromoBanner() {
           className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-4 py-4 sm:flex-row sm:justify-between"
         >
           <div className="flex items-center gap-3 text-center sm:text-left">
-            <span className="hidden shrink-0 text-3xl sm:block">{slide.icon}</span>
+            <span className="hidden shrink-0 sm:block">
+              {typeof slide.icon === 'string' ? (
+                <span className="text-3xl">{slide.icon}</span>
+              ) : (
+                <Image
+                  src={slide.icon.src}
+                  alt={slide.icon.alt}
+                  width={56}
+                  height={56}
+                  className="h-14 w-14 object-contain drop-shadow-[0_0_12px_rgba(57,255,106,0.35)]"
+                />
+              )}
+            </span>
             <div>
               <span className="mr-2 inline-block rounded-full bg-canopy-bg/60 px-2 py-0.5 text-[10px] font-bold tracking-wide text-canopy-green">
                 {slide.badge}

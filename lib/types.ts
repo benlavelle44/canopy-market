@@ -386,3 +386,60 @@ export interface MerchOrderItem {
   quantity: number;
   unit_price_cents: number;
 }
+
+export type LearnCategory =
+  | 'basics'
+  | 'products'
+  | 'body'
+  | 'plant'
+  | 'dosing-safety'
+  | 'dictionary'
+  | 'laws';
+
+export const LEARN_CATEGORY_LABELS: Record<LearnCategory, string> = {
+  basics: 'Basics',
+  products: 'Products & How to Consume',
+  body: 'Cannabis & Your Body',
+  plant: 'The Plant',
+  'dosing-safety': 'Dosing & Safety',
+  dictionary: 'Dictionary',
+  laws: 'Laws & Regulations',
+};
+
+// Body content is stored as a small block schema rather than raw markdown --
+// keeps rendering fully controlled/styled (no markdown parser dependency,
+// no injection surface) while still being flexible enough for headings,
+// paragraphs, and lists.
+export type LearnBlock =
+  | { type: 'p'; text: string }
+  | { type: 'h2'; text: string }
+  | { type: 'list'; items: string[] }
+  | { type: 'term'; term: string; definition: string };
+
+export type LearnArticleStatus = 'draft' | 'published';
+
+export interface LearnArticle {
+  id: string;
+  slug: string;
+  category: LearnCategory;
+  title: string;
+  description: string;
+  kief_intro: string;
+  body: LearnBlock[];
+  featured: boolean;
+  status: LearnArticleStatus;
+  published_at: string;
+  created_at: string;
+}
+
+export type LearnBacklogStatus = 'pending' | 'done' | 'skipped';
+
+export interface LearnTopicBacklog {
+  id: string;
+  topic: string;
+  category: LearnCategory;
+  notes: string | null;
+  status: LearnBacklogStatus;
+  created_at: string;
+  completed_at: string | null;
+}

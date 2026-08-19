@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
 import { createServerReadClient } from '@/lib/supabaseServer';
 import { SITE_URL } from '@/lib/siteConfig';
+import { LEARN_CATEGORY_LABELS } from '@/lib/types';
 
 // Every strain and every approved dispensary gets its own indexable URL --
 // this is the whole reason organic search can ever find this app. Static
@@ -9,9 +10,10 @@ import { SITE_URL } from '@/lib/siteConfig';
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = createServerReadClient();
 
-  const [{ data: strains }, { data: dispensaries }] = await Promise.all([
+  const [{ data: strains }, { data: dispensaries }, { data: learnArticles }] = await Promise.all([
     supabase.from('strains').select('slug, created_at').eq('verification_status', 'verified'),
     supabase.from('dispensaries').select('slug, created_at').eq('status', 'approved'),
+    supabase.from('learn_articles').select('slug, category, published_at'),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [
@@ -42,5 +44,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }));
 
-  return [...staticPages, ...strainPages, ...dispensaryPages];
+  // Every Learn category and every article gets its own indexable URL --
+  // this section is the site's main organic-search growth lever (SEO
+  // long-tail content), same role the strain/dispensary pages play for
+  // transactional search.
+  const learnCategoryPages: MetadataRoute.Sitemap = Object.keys(LEARN_CATEGORY_LABELS).map((cat) => ({
+    url: `${SITE_URL}/learn/${cat}`,
+    changeFrequency: 'weekly',
+    priority: 0.5,
+  }));
+
+  const learnArticlePages: MetadataRoute.Sitemap = (learnArticles || []).map((a: any) => ({
+    url: `${SITE_URL}/learn/${a.category}/${a.slug}`,
+    lastModified: a.published_at ? new Date(a.published_at) : undefined,
+    changeFrequency: 'monthly',
+    priority: 0.6,
+  }));
+
+  return [...staticPages, ...strainPages, ...dispensaryPages, ...learnCategoryPages, ...learnArticlePages];
 }
